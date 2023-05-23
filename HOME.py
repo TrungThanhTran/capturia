@@ -36,8 +36,10 @@ footer="""
         """
 st.markdown(footer, unsafe_allow_html=True)
 
-def infer_audio(state, asr_model, type):
-    texts, title, segments, language = inference(state, asr_model, type)
+def infer_audio(state, asr_model, type, is_fast_transcription):
+    start_time = time.time()
+    texts, title, segments, language = inference(state, asr_model, type, is_fast_transcription)
+    end_time = time.time()
     # passages = results
     passages = clean_text(texts, language)
         
@@ -45,6 +47,7 @@ def infer_audio(state, asr_model, type):
     st.session_state['title'] = title
     st.session_state['segments'] = segments
     st.session_state['language'] = language
+    st.session_state['running_time_transcript'] = end_time - start_time
     
 if __name__ == "__main__":
     with open('data/pass/user_db.yaml') as file:
@@ -72,7 +75,8 @@ if __name__ == "__main__":
         st.sidebar.header("Home")
         asr_model_options = ['medium.en', 'small.en','base.en', 'medium'] #whisper-large-v2
         asr_model_name = st.sidebar.selectbox("Whisper Model Options", options=asr_model_options, key='sbox')
-
+        # is_fast_transcription = st.sidebar.checkbox('Using fast transcription feature')
+        is_fast_transcription = True
         col1, col2 = st.columns(2)
         with col1:
             original_title = '<center><p style="font-size: 80px;">TakeNote</p> \n <p>AI MEETING NOTES & SENTIMENT ANALYSIS </p></center>'
@@ -97,12 +101,17 @@ if __name__ == "__main__":
 
         if "sen_df" not in st.session_state:
             st.session_state['sen_df'] = ''
+            
+        if "running_time_transcript" not in st.session_state:
+            st.session_state['running_time_transcript'] = 0.0
 
         def clean_directory(paths):
             if not os.path.exists(f'./temp/si/{username}'):
                 os.mkdir(f'./temp/si/{username}')
             if not os.path.exists(f'./temp/{username}'):
                 os.mkdir(f'./temp/{username}')
+            if not os.path.exists(f'./temp/transcript/{username}'):
+                os.mkdir(f'./temp/transcript/{username}')
             for path in paths:
                 if not os.path.exists(path):
                     pass
@@ -113,7 +122,10 @@ if __name__ == "__main__":
 
         ### Preload model
         try:
-            ASR_MODEL = load_asr_model(st.session_state.sbox)
+            if is_fast_transcription:
+                ASR_MODEL = load_fast_asr_model(st.session_state.sbox)
+            else:    
+                ASR_MODEL = load_asr_model(st.session_state.sbox)
         except Exception as e:
             print(e)
             st.session_state.sbox = 'small'
@@ -153,13 +165,13 @@ if __name__ == "__main__":
                     try:
                         if ('url' in st.session_state) and (st.session_state['url'] != ''):
                             if len(st.session_state['url']) > 0: 
-                                infer_audio(st.session_state['url'], ASR_MODEL, type='url') 
+                                infer_audio(st.session_state['url'], ASR_MODEL, type='url', is_fast_transcription=is_fast_transcription) 
 
                         if ('upload' in st.session_state) and (st.session_state['upload'] != ''):  
                             import shutil
                             shutil.copy(f"./temp/{username}/audio.mp3", f"./temp/si/{username}/audio.mp3")
                             if st.session_state['upload'] is not None:
-                                infer_audio(st.session_state['upload'], ASR_MODEL, type='upload')
+                                infer_audio(st.session_state['upload'], ASR_MODEL, type='upload', is_fast_transcription=is_fast_transcription)
                         
                     except Exception as e:
                         print(e)

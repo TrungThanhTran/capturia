@@ -102,14 +102,14 @@ if 'authentication_status' in st.session_state and st.session_state['authenticat
                                              use_auth_token="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")
 
         # 4. apply pretrained pipeline
-        with st.spinner("Processing file..."):
+        with st.spinner("Processing file, this may take up 1 hour, please go to Download Transcription later for the file..."):
             process_file = st.session_state['si_file']
             if "wav" not in st.session_state['si_file']:
                 # assign files
                 output_file = process_file.replace("mp3", "wav")
             
-                # convert mp3 file to wav file
-                sound = AudioSegment.from_mp3(process_file)
+                # convert mp3 file to wav filetr
+                sound = AudioSegment.from_file(process_file)
                 sound.export(output_file, format="wav")
                 
             diarization = pipeline(output_file)
@@ -125,6 +125,7 @@ if 'authentication_status' in st.session_state and st.session_state['authenticat
             with open('../speaker_diarization.json', 'w') as f:
                 json.dump(tran, f, indent=6)
             st.write(f"found {len(set(list_speakers))} speakers!")
+            # st.write(st.session_state)
             match_result = matching_tran_seg(st.session_state['segments'], tran)
             transcription_down = []
             
@@ -141,7 +142,7 @@ if 'authentication_status' in st.session_state and st.session_state['authenticat
                 st.markdown(f'<span style="color:{speaker_color_code[seg["speaker"]]}">{seg["speaker"]}</span> :' + seg['text'],  unsafe_allow_html=True)
                 transcription_down.append("\n")
                 st.markdown("\n", unsafe_allow_html=True)
-            transcript_downloader("\n".join(transcription_down), "Download transcription with segmentation")
+            transcript_downloader("\n".join(transcription_down), "Download transcription with segmentation",  header="speaker_diarization", user_name=st.session_state["username"])
     else:
         st.write("please upload a file or add url link")
 else:

@@ -216,25 +216,37 @@ if 'authentication_status' in st.session_state and st.session_state['authenticat
     st.sidebar.header("Transcription")
     st.markdown("## Transcription Audio")
 
-
     if "title" not in st.session_state:
         st.session_state.title = ''   
     if 'passages' not in st.session_state:
         st.session_state['passages'] = ""
     if "language" not in st.session_state:
         st.session_state['language'] = ""
+    if "running_time_transcript" not in st.session_state:
+        st.session_state['running_time_transcript'] = 0.0
         
     passages = st.session_state['passages']
     title = st.session_state['title']
     language = st.session_state['language']
-
+    running_time = st.session_state['running_time_transcript']
+    if running_time / 3600 > 1.0:
+        running_time = str(running_time / 3600).format("{:. 2f}")[:4] + ' hours'
+    elif running_time / 60 > 1.0:
+        running_time = str(running_time / 60).format("{:. 2f}")[:4] + ' minutes'
+    else:
+        running_time = str(running_time).format("{:. 2f}")[:4] + ' seconds'
+        
     if len(passages) > 0:
-        transcript_downloader(passages, "Download transcription")
+        write_data = 'running_time: ' + str(running_time) + '\n' + passages
+        transcript_downloader(write_data, "Download transcription", header="transcription", user_name=st.session_state['username'])
 
     # sentiment, sentences = sentiment_pipe(passages)
     # with st.expander("See Transcribed Text"):
     if (language is not None) and len(language) > 0:
         st.write(f'detected language: {language_code[language]}')
+    if running_time is not None:
+        st.write(f'running time: {running_time}')
+                 
     st.write(f"Number of words: {len(passages.split())}")
     st.subheader(f'Title: {title}')
     st.write(passages)        

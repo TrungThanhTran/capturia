@@ -1,4 +1,5 @@
 import whisper
+from faster_whisper import WhisperModel
 import os
 from pytube import YouTube
 import pandas as pd
@@ -106,10 +107,10 @@ initial_qa_template = (
 
 ###################### Functions #######################################################################################
 
-@st.experimental_singleton(suppress_st_warning=True)
+# @st.experimental_singleton(suppress_st_warning=True)
 def load_models():
 
-    '''Load and cache all the models to be used'''
+    '''Load and cache all the models to be used'''    
     q_model = ORTModelForSequenceClassification.from_pretrained("nickmuchi/quantized-optimum-finbert-tone")
     ner_model = AutoModelForTokenClassification.from_pretrained("xlm-roberta-large-finetuned-conll03-english")
     kg_model = None # AutoModelForSeq2SeqLM.from_pretrained("Babelscape/rebel-large")
@@ -118,7 +119,7 @@ def load_models():
     ner_tokenizer = AutoTokenizer.from_pretrained("xlm-roberta-large-finetuned-conll03-english")
     emb_tokenizer = None #AutoTokenizer.from_pretrained('google/flan-t5-xl') # Semantic Search
     sent_pipe = pipeline("text-classification",model=q_model, tokenizer=q_tokenizer)
-    sum_pipe = None #pipeline("summarization",model="facebook/bart-large-cnn", tokenizer="facebook/bart-large-cnn",clean_up_tokenization_spaces=True)
+    sum_pipe = pipeline("summarization",model="facebook/bart-large-cnn", tokenizer="facebook/bart-large-cnn",clean_up_tokenization_spaces=True)
     ner_pipe = pipeline("ner", model=ner_model, tokenizer=ner_tokenizer, grouped_entities=True)
     cross_encoder = None #CrossEncoder('cross-encoder/mmarco-mMiniLMv2-L12-H384-v1') #cross-encoder/ms-marco-MiniLM-L-12-v2
     sbert = SentenceTransformer('all-MiniLM-L6-v2')
@@ -132,6 +133,12 @@ def load_asr_model(asr_model_name):
     return asr_model
 
 @st.experimental_singleton(suppress_st_warning=True)
+def load_fast_asr_model(asr_model_name):
+    asr_model = WhisperModel(asr_model_name, device="cpu", compute_type="float32")
+
+    return asr_model
+
+# @st.experimental_singleton(suppress_st_warning=True)
 def load_si_model(si_model_name):
     print(si_model_name)
     feature_extractor = AutoFeatureExtractor.from_pretrained(si_model_name)
@@ -141,7 +148,7 @@ def load_si_model(si_model_name):
 def delete_model(model):
     del model
     
-@st.experimental_singleton(suppress_st_warning=True)
+# @st.experimental_singleton(suppress_st_warning=True)
 def process_corpus(corpus, title, embedding_model, chunk_size=1000, overlap=50):
 
     '''Process text for Semantic Search'''
@@ -181,7 +188,7 @@ def chunk_and_preprocess_text(text,thresh=500):
     
     return chunks
     
-@st.experimental_singleton(suppress_st_warning=True)
+# @st.experimental_singleton(suppress_st_warning=True)
 def gen_embeddings(embedding_model):
 
     '''Generate embeddings for given model'''
@@ -198,7 +205,7 @@ def gen_embeddings(embedding_model):
 
     return embeddings
     
-@st.experimental_memo(suppress_st_warning=True)
+# @st.experimental_memo(suppress_st_warning=True)
 def embed_text(query,title,embedding_model,_emb_tok,_docsearch,chain_type="Normal"):
     try:
         '''Embed text and generate semantic search scores'''
@@ -238,7 +245,7 @@ def embed_text(query,title,embedding_model,_emb_tok,_docsearch,chain_type="Norma
         return e
     return answer
     
-@st.experimental_singleton(suppress_st_warning=True)
+# @st.experimental_singleton(suppress_st_warning=True)
 def get_spacy():
     nlp = en_core_web_lg.load()
     return nlp
@@ -249,7 +256,7 @@ def MP4ToMP3(path_to_mp4, path_to_mp3):
     FILETOCONVERT.close()
 
 def download_from_youtube(url):
-    yt = YouTube(url)
+    yt = YouTube(url, use_oauth=True, allow_oauth_cache=True)
     yt.streams \
     .filter(progressive=True, file_extension='mp4') \
     .order_by('resolution') \
@@ -306,11 +313,27 @@ def transcribe_with_lang(model, audio_file):
     return detected_lang, result
     
 # @st.experimental_memo(suppress_st_warning=True)
-def inference(state, _asr_model, type):
+def inference(state, _asr_model, type, is_fast_transcrption):
     '''Convert Youtube video or Audio upload to text'''
     if type == 'upload':
         # language, results = transcribe_with_lang(_asr_model, "./temp/audio.mp3")
-        results = _asr_model.transcribe(f"./temp/{st.session_state['username']}/audio.mp3", task='transcribe', language='en')
+        # st.write(is_fast_transcrption)
+        if is_fast_transcrption:
+            results = {}
+            segments, _ = _asr_model.transcribe(f"./temp/{st.session_state['username']}/audio.mp3",  
+                                                   beam_size=1, 
+                                                   word_timestamps=True)
+            whisper_results = []
+            for segment in segments:
+                whisper_results.append(segment._asdict())
+
+            # st.write(whisper_results)
+            results['text'] = ' '.join([segment['text'] for segment in whisper_results])
+
+            results['segments'] = whisper_results #[{'start':segment.start, 'end':segment.end, 'text':segment.text}for segment in segments]
+            # st.write(results)
+        else:
+            results = _asr_model.transcribe(f"./temp/{st.session_state['username']}/audio.mp3", task='transcribe', language='en')
         return results['text'], "Transcribed Audio", results['segments'], "en"
 
     elif type == 'url':
@@ -326,7 +349,21 @@ def inference(state, _asr_model, type):
                 shutil.copy(url_file_mp3, f"./temp/si/{st.session_state['username']}/{url_file_mp3.split('/')[-1]}")
                 shutil.copy(url_file_wav, f"./temp/si/{st.session_state['username']}/{url_file_wav.split('/')[-1]}")
                 # language, results = transcribe_with_lang(_asr_model, url_file_mp3)
-                results = _asr_model.transcribe(url_file_mp3, task='transcribe', language='en')
+                if is_fast_transcrption:
+                    results = {}
+                    segments, _ = _asr_model.transcribe(url_file_mp3,  
+                                                        beam_size=1, 
+                                                        word_timestamps=True)
+                    whisper_results = []
+                    for segment in segments:
+                        whisper_results.append(segment._asdict())
+
+                    # st.write(whisper_results)
+                    results['text'] = ' '.join([segment['text'] for segment in whisper_results])
+
+                    results['segments'] = whisper_results
+                else:
+                    results = _asr_model.transcribe(url_file_mp3, task='transcribe', language='en')
         else:
             return "no URL existed!", "No audio found", None
         return results['text'], title, results['segments'], "en"
@@ -377,7 +414,7 @@ def levenshtein_ratio_and_distance(s, t, ratio_calc = False):
         return "The strings are {} edits away".format(distance[row][col])
     
       
-@st.experimental_memo(suppress_st_warning=True)
+# @st.experimental_memo(suppress_st_warning=True)
 def sentiment_pipe(audio_text):
     '''Determine the sentiment of the text'''
     
@@ -399,7 +436,7 @@ def summarize_text(sum_pipe, text_to_summarize,max_len,min_len):
      
     return summarized_text
      
-@st.experimental_memo(suppress_st_warning=True)
+# @st.experimental_memo(suppress_st_warning=True)
 def clean_text(text, language="en"):
     '''Clean all text'''
     if language == "en":
@@ -438,14 +475,20 @@ def chunk_long_text(text,threshold,window_size=3,stride=2):
             
     return passages   
  
-def transcript_downloader(raw_text, text_button):
-	b64 = base64.b64encode(raw_text.encode()).decode()
-	new_filename = "transcript_{}_.txt".format(time_str)
+def transcript_downloader(raw_text, text_button, header="_", user_name="admin"):
+	b64 = base64.b64encode(raw_text.encode())
+	new_filename = f"transcript_{header}_{user_name}_{time_str}.txt"
+	if 'speaker_diarization' in header:
+		try:
+			with open(f"./temp/transcript/{user_name}/{new_filename}","w+") as f:
+				f.write(raw_text)
+		except Exception as e:
+			print(str(e))
 	st.markdown(f"#### {text_button} ###")
-	href = f'<a href="data:file/txt;base64,{b64}" download="{new_filename}">Click to Download!!</a>'
+	href = f'<a href="data:file/txt;base64,{b64.decode()}" download="{new_filename}">Click to Download!!</a>'
 	st.markdown(href,unsafe_allow_html=True)
 
-@st.experimental_memo(suppress_st_warning=True) 	
+# @st.experimental_memo(suppress_st_warning=True) 	
 def get_all_entities_per_sentence(text):
     doc = nlp(''.join(text))
 
@@ -468,12 +511,12 @@ def get_all_entities_per_sentence(text):
 
     return entities_all_sentences
  
-@st.experimental_memo(suppress_st_warning=True)    
+# @st.experimental_memo(suppress_st_warning=True)    
 def get_all_entities(text):
     all_entities_per_sentence = get_all_entities_per_sentence(text)
     return list(itertools.chain.from_iterable(all_entities_per_sentence))
 
-@st.experimental_memo(suppress_st_warning=True)    
+# @st.experimental_memo(suppress_st_warning=True)    
 def get_and_compare_entities(article_content,summary_output):
     
     all_entities_per_sentence = get_all_entities_per_sentence(article_content)
@@ -521,7 +564,7 @@ def get_and_compare_entities(article_content,summary_output):
 
     return matched_entities, unmatched_entities
 
-@st.experimental_memo(suppress_st_warning=True) 
+# @st.experimental_memo(suppress_st_warning=True) 
 def highlight_entities(article_content,summary_output):
    
     markdown_start_red = "<mark class=\"entity\" style=\"background: rgb(238, 135, 135);\">"
@@ -861,7 +904,7 @@ class KB():
         for s in self.sources.items():
             res += f"- {s}\n"
         return res
-            
+  
 def save_network_html(kb, filename="knowledge_network.html"):
     # create network
     net = Network(directed=True, width="700px", height="700px", bgcolor="#eeeeee")
@@ -888,5 +931,14 @@ def save_network_html(kb, filename="knowledge_network.html"):
     net.show(filename)
 
 nlp = get_spacy()    
+
+def estimate_ops_time(length_audio):
+    """
+    Function of estimate running time
+    args: [float] length of audio in seconds
+    return: [float] time will need to run in seconds
+    """
+    # 14400 seconds need  9720 seconds to handle
+    return length_audio * 9720 / 14400 
 
 sent_pipe, sum_pipe, ner_pipe, cross_encoder, kg_model, kg_tokenizer, emb_tokenizer, sbert  = load_models()

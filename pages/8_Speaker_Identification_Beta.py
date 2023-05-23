@@ -167,7 +167,7 @@ if 'authentication_status' in st.session_state and st.session_state['authenticat
                                 transcription_down.append(segment["text"][1:] + ' ')
                                 st.write(segment["text"][1:] + ' ')
                                 st.write("\n")
-                    transcript_downloader("\n".join(transcription_down), "Download transcription with speakers")
+                    transcript_downloader("\n".join(transcription_down), "Download transcription with speakers",  header="speaker_identification_beta", user_name=st.session_state["username"])
                 except IndexError as ie:
                     print(ie)
                     st.write('Oop.. Sorry, please check the file audio again!')

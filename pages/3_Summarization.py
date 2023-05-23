@@ -70,7 +70,7 @@ if 'authentication_status' in st.session_state and st.session_state['authenticat
             
             st.markdown("####")     
             
-            transcript_downloader(summarized_text, "Download Summary")
+            transcript_downloader(summarized_text, "Download Summary",  header="summarization", user_name=st.session_state["username"])
             delete_model(sum_pipe)
             del text_to_summarize
             del summarized_text
