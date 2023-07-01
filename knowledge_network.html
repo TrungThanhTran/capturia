@@ -1,0 +1,163 @@
+<html>
+    <head>
+        <meta charset="utf-8">
+        
+            <script src="lib/bindings/utils.js"></script>
+            <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.2/dist/dist/vis-network.min.css" integrity="sha512-WgxfT5LWjfszlPHXRmBWHkV2eceiWTOBvrKCNbdgDYTHrT2AeLCGbF4sZlZw3UMN3WtL0tGUoIAKsu8mllg/XA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.2/dist/vis-network.min.js" integrity="sha512-LnvoEWDFrqGHlHmDD2101OrLcbsfkrzoSpvtSQtxK3RMnRV0eOkhhBN2dXHKRrUU8p2DGRTk35n4O8nWSVe1mQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+            
+        
+<center>
+<h1></h1>
+</center>
+
+<!-- <link rel="stylesheet" href="../node_modules/vis/dist/vis.min.css" type="text/css" />
+<script type="text/javascript" src="../node_modules/vis/dist/vis.js"> </script>-->
+        <link
+          href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta3/dist/css/bootstrap.min.css"
+          rel="stylesheet"
+          integrity="sha384-eOJMYsd53ii+scO/bJGFsiCZc+5NDVN2yr8+0RDqr0Ql0h+rP48ckxlpbzKgwra6"
+          crossorigin="anonymous"
+        />
+        <script
+          src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta3/dist/js/bootstrap.bundle.min.js"
+          integrity="sha384-JEW9xMcG8R+pH31jmWH6WWP0WintQrMb4s7ZOdauHnUtxwoG2vI5DkLtS3qm9Ekf"
+          crossorigin="anonymous"
+        ></script>
+
+
+        <center>
+          <h1></h1>
+        </center>
+        <style type="text/css">
+
+             #mynetwork {
+                 width: 700px;
+                 height: 700px;
+                 background-color: #eeeeee;
+                 border: 1px solid lightgray;
+                 position: relative;
+                 float: left;
+             }
+
+             
+
+             
+
+             
+        </style>
+    </head>
+
+
+    <body>
+        <div class="card" style="width: 100%">
+            
+            
+            <div id="mynetwork" class="card-body"></div>
+        </div>
+
+        
+        
+
+        <script type="text/javascript">
+
+              // initialize global variables.
+              var edges;
+              var nodes;
+              var allNodes;
+              var allEdges;
+              var nodeColors;
+              var originalNodes;
+              var network;
+              var container;
+              var options, data;
+              var filter = {
+                  item : '',
+                  property : '',
+                  value : []
+              };
+
+              
+
+              
+
+              // This method is responsible for drawing the graph, returns the drawn network
+              function drawGraph() {
+                  var container = document.getElementById('mynetwork');
+
+                  
+
+                  // parsing and collecting nodes and edges from the python
+                  nodes = new vis.DataSet([{"color": "#00FF00", "id": "2010 Commonwealth Games", "label": "2010 Commonwealth Games", "shape": "circle"}, {"color": "#00FF00", "id": "2010", "label": "2010", "shape": "circle"}, {"color": "#00FF00", "id": "2010 FIFA World Cup", "label": "2010 FIFA World Cup", "shape": "circle"}, {"color": "#00FF00", "id": "Glasgow", "label": "Glasgow", "shape": "circle"}, {"color": "#00FF00", "id": "Decision-making", "label": "Decision-making", "shape": "circle"}, {"color": "#00FF00", "id": "Risk management", "label": "Risk management", "shape": "circle"}, {"color": "#00FF00", "id": "Decision theory", "label": "Decision theory", "shape": "circle"}, {"color": "#00FF00", "id": "Uncertainty", "label": "Uncertainty", "shape": "circle"}, {"color": "#00FF00", "id": "Apprenticeship", "label": "Apprenticeship", "shape": "circle"}, {"color": "#00FF00", "id": "Higher education", "label": "Higher education", "shape": "circle"}, {"color": "#00FF00", "id": "Financial risk", "label": "Financial risk", "shape": "circle"}, {"color": "#00FF00", "id": "Enterprise risk management", "label": "Enterprise risk management", "shape": "circle"}, {"color": "#00FF00", "id": "Enterprise liability", "label": "Enterprise liability", "shape": "circle"}, {"color": "#00FF00", "id": "Decision problem", "label": "Decision problem", "shape": "circle"}, {"color": "#00FF00", "id": "Business", "label": "Business", "shape": "circle"}, {"color": "#00FF00", "id": "Choice", "label": "Choice", "shape": "circle"}, {"color": "#00FF00", "id": "Cause of action", "label": "Cause of action", "shape": "circle"}, {"color": "#00FF00", "id": "Organization", "label": "Organization", "shape": "circle"}, {"color": "#00FF00", "id": "Public transport", "label": "Public transport", "shape": "circle"}, {"color": "#00FF00", "id": "Driving", "label": "Driving", "shape": "circle"}, {"color": "#00FF00", "id": "Evaluation", "label": "Evaluation", "shape": "circle"}, {"color": "#00FF00", "id": "Raincoat", "label": "Raincoat", "shape": "circle"}, {"color": "#00FF00", "id": "Umbrella", "label": "Umbrella", "shape": "circle"}, {"color": "#00FF00", "id": "Certainty", "label": "Certainty", "shape": "circle"}, {"color": "#00FF00", "id": "Foodservice", "label": "Foodservice", "shape": "circle"}, {"color": "#00FF00", "id": "Food", "label": "Food", "shape": "circle"}, {"color": "#00FF00", "id": "Iain Banks", "label": "Iain Banks", "shape": "circle"}, {"color": "#00FF00", "id": "List of lieutenant governors of Ontario", "label": "List of lieutenant governors of Ontario", "shape": "circle"}, {"color": "#00FF00", "id": "Project management", "label": "Project management", "shape": "circle"}, {"color": "#00FF00", "id": "Project", "label": "Project", "shape": "circle"}, {"color": "#00FF00", "id": "Contract", "label": "Contract", "shape": "circle"}, {"color": "#00FF00", "id": "Lead time", "label": "Lead time", "shape": "circle"}, {"color": "#00FF00", "id": "Price", "label": "Price", "shape": "circle"}, {"color": "#00FF00", "id": "2008 Summer Olympics", "label": "2008 Summer Olympics", "shape": "circle"}, {"color": "#00FF00", "id": "2008", "label": "2008", "shape": "circle"}, {"color": "#00FF00", "id": "Supply chain", "label": "Supply chain", "shape": "circle"}, {"color": "#00FF00", "id": "Harvard Kennedy School", "label": "Harvard Kennedy School", "shape": "circle"}, {"color": "#00FF00", "id": "Harvard University", "label": "Harvard University", "shape": "circle"}, {"color": "#00FF00", "id": "William McKinley", "label": "William McKinley", "shape": "circle"}, {"color": "#00FF00", "id": "President of the United States", "label": "President of the United States", "shape": "circle"}, {"color": "#00FF00", "id": "One, Two, Three, Four, Five", "label": "One, Two, Three, Four, Five", "shape": "circle"}, {"color": "#00FF00", "id": "Probability", "label": "Probability", "shape": "circle"}, {"color": "#00FF00", "id": "Strategic planning", "label": "Strategic planning", "shape": "circle"}, {"color": "#00FF00", "id": "Plan", "label": "Plan", "shape": "circle"}, {"color": "#00FF00", "id": "Risk", "label": "Risk", "shape": "circle"}, {"color": "#00FF00", "id": "Philosophy of language", "label": "Philosophy of language", "shape": "circle"}, {"color": "#00FF00", "id": "Preference theory", "label": "Preference theory", "shape": "circle"}, {"color": "#00FF00", "id": "Human", "label": "Human", "shape": "circle"}, {"color": "#00FF00", "id": "Preference", "label": "Preference", "shape": "circle"}, {"color": "#00FF00", "id": "Public policy", "label": "Public policy", "shape": "circle"}, {"color": "#00FF00", "id": "Chair", "label": "Chair", "shape": "circle"}, {"color": "#00FF00", "id": "Pre-", "label": "Pre-", "shape": "circle"}]);
+                  edges = new vis.DataSet([{"arrows": "to", "from": "2010 Commonwealth Games", "label": "point in time", "title": "point in time", "to": "2010"}, {"arrows": "to", "from": "2010 FIFA World Cup", "label": "point in time", "title": "point in time", "to": "2010"}, {"arrows": "to", "from": "2010 Commonwealth Games", "label": "location", "title": "location", "to": "Glasgow"}, {"arrows": "to", "from": "Decision-making", "label": "part of", "title": "part of", "to": "Risk management"}, {"arrows": "to", "from": "Decision theory", "label": "facet of", "title": "facet of", "to": "Uncertainty"}, {"arrows": "to", "from": "Decision-making", "label": "facet of", "title": "facet of", "to": "Uncertainty"}, {"arrows": "to", "from": "Decision theory", "label": "subclass of", "title": "subclass of", "to": "Decision-making"}, {"arrows": "to", "from": "Apprenticeship", "label": "subclass of", "title": "subclass of", "to": "Higher education"}, {"arrows": "to", "from": "Financial risk", "label": "subclass of", "title": "subclass of", "to": "Risk management"}, {"arrows": "to", "from": "Financial risk", "label": "facet of", "title": "facet of", "to": "Enterprise risk management"}, {"arrows": "to", "from": "Enterprise risk management", "label": "facet of", "title": "facet of", "to": "Enterprise liability"}, {"arrows": "to", "from": "Enterprise risk management", "label": "studies", "title": "studies", "to": "Enterprise liability"}, {"arrows": "to", "from": "Enterprise risk management", "label": "field of work", "title": "field of work", "to": "Enterprise liability"}, {"arrows": "to", "from": "Decision problem", "label": "facet of", "title": "facet of", "to": "Business"}, {"arrows": "to", "from": "Decision problem", "label": "subclass of", "title": "subclass of", "to": "Business"}, {"arrows": "to", "from": "Choice", "label": "subclass of", "title": "subclass of", "to": "Cause of action"}, {"arrows": "to", "from": "Business", "label": "part of", "title": "part of", "to": "Organization"}, {"arrows": "to", "from": "Business", "label": "different from", "title": "different from", "to": "Organization"}, {"arrows": "to", "from": "Organization", "label": "different from", "title": "different from", "to": "Business"}, {"arrows": "to", "from": "Enterprise liability", "label": "subclass of", "title": "subclass of", "to": "Decision-making"}, {"arrows": "to", "from": "Public transport", "label": "different from", "title": "different from", "to": "Driving"}, {"arrows": "to", "from": "Public transport", "label": "opposite of", "title": "opposite of", "to": "Driving"}, {"arrows": "to", "from": "Public transport", "label": "subclass of", "title": "subclass of", "to": "Driving"}, {"arrows": "to", "from": "Decision-making", "label": "has part", "title": "has part", "to": "Evaluation"}, {"arrows": "to", "from": "Raincoat", "label": "subclass of", "title": "subclass of", "to": "Umbrella"}, {"arrows": "to", "from": "Raincoat", "label": "different from", "title": "different from", "to": "Umbrella"}, {"arrows": "to", "from": "Uncertainty", "label": "opposite of", "title": "opposite of", "to": "Certainty"}, {"arrows": "to", "from": "Uncertainty", "label": "different from", "title": "different from", "to": "Certainty"}, {"arrows": "to", "from": "Foodservice", "label": "product or material produced", "title": "product or material produced", "to": "Food"}, {"arrows": "to", "from": "Iain Banks", "label": "position held", "title": "position held", "to": "List of lieutenant governors of Ontario"}, {"arrows": "to", "from": "Iain Banks", "label": "father", "title": "father", "to": "Iain Banks"}, {"arrows": "to", "from": "Iain Banks", "label": "child", "title": "child", "to": "Iain Banks"}, {"arrows": "to", "from": "2010", "label": "point in time", "title": "point in time", "to": "2010"}, {"arrows": "to", "from": "Project management", "label": "facet of", "title": "facet of", "to": "Project"}, {"arrows": "to", "from": "Project management", "label": "facet of", "title": "facet of", "to": "Project management"}, {"arrows": "to", "from": "Contract", "label": "part of", "title": "part of", "to": "Project management"}, {"arrows": "to", "from": "Lead time", "label": "subclass of", "title": "subclass of", "to": "Price"}, {"arrows": "to", "from": "2008 Summer Olympics", "label": "point in time", "title": "point in time", "to": "2008"}, {"arrows": "to", "from": "Supply chain", "label": "facet of", "title": "facet of", "to": "Supply chain"}, {"arrows": "to", "from": "Supply chain", "label": "part of", "title": "part of", "to": "Supply chain"}, {"arrows": "to", "from": "Supply chain", "label": "subclass of", "title": "subclass of", "to": "Supply chain"}, {"arrows": "to", "from": "Harvard Kennedy School", "label": "part of", "title": "part of", "to": "Harvard University"}, {"arrows": "to", "from": "Harvard University", "label": "subsidiary", "title": "subsidiary", "to": "Harvard Kennedy School"}, {"arrows": "to", "from": "William McKinley", "label": "position held", "title": "position held", "to": "President of the United States"}, {"arrows": "to", "from": "Uncertainty", "label": "facet of", "title": "facet of", "to": "Uncertainty"}, {"arrows": "to", "from": "Uncertainty", "label": "subclass of", "title": "subclass of", "to": "Uncertainty"}, {"arrows": "to", "from": "One, Two, Three, Four, Five", "label": "followed by", "title": "followed by", "to": "One, Two, Three, Four, Five"}, {"arrows": "to", "from": "Probability", "label": "facet of", "title": "facet of", "to": "Uncertainty"}, {"arrows": "to", "from": "Strategic planning", "label": "subclass of", "title": "subclass of", "to": "Plan"}, {"arrows": "to", "from": "Strategic planning", "label": "facet of", "title": "facet of", "to": "Strategic planning"}, {"arrows": "to", "from": "Uncertainty", "label": "subclass of", "title": "subclass of", "to": "Decision-making"}, {"arrows": "to", "from": "Uncertainty", "label": "facet of", "title": "facet of", "to": "Decision-making"}, {"arrows": "to", "from": "Uncertainty", "label": "instance of", "title": "instance of", "to": "Decision-making"}, {"arrows": "to", "from": "Risk management", "label": "studies", "title": "studies", "to": "Risk"}, {"arrows": "to", "from": "Philosophy of language", "label": "subclass of", "title": "subclass of", "to": "Risk management"}, {"arrows": "to", "from": "Philosophy of language", "label": "use", "title": "use", "to": "Risk management"}, {"arrows": "to", "from": "Risk", "label": "studied by", "title": "studied by", "to": "Risk management"}, {"arrows": "to", "from": "Preference theory", "label": "subclass of", "title": "subclass of", "to": "Decision theory"}, {"arrows": "to", "from": "Preference theory", "label": "part of", "title": "part of", "to": "Decision theory"}, {"arrows": "to", "from": "Preference theory", "label": "subclass of", "title": "subclass of", "to": "Decision-making"}, {"arrows": "to", "from": "Human", "label": "subclass of", "title": "subclass of", "to": "Human"}, {"arrows": "to", "from": "Preference theory", "label": "studies", "title": "studies", "to": "Preference"}, {"arrows": "to", "from": "Preference", "label": "studied by", "title": "studied by", "to": "Preference theory"}, {"arrows": "to", "from": "Public policy", "label": "facet of", "title": "facet of", "to": "Public policy"}, {"arrows": "to", "from": "Public policy", "label": "part of", "title": "part of", "to": "Public policy"}, {"arrows": "to", "from": "Preference", "label": "facet of", "title": "facet of", "to": "Preference"}, {"arrows": "to", "from": "Preference", "label": "instance of", "title": "instance of", "to": "Preference"}, {"arrows": "to", "from": "Chair", "label": "part of", "title": "part of", "to": "Organization"}, {"arrows": "to", "from": "Pre-", "label": "followed by", "title": "followed by", "to": "Pre-"}, {"arrows": "to", "from": "Pre-", "label": "follows", "title": "follows", "to": "Pre-"}]);
+
+                  nodeColors = {};
+                  allNodes = nodes.get({ returnType: "Object" });
+                  for (nodeId in allNodes) {
+                    nodeColors[nodeId] = allNodes[nodeId].color;
+                  }
+                  allEdges = edges.get({ returnType: "Object" });
+                  // adding nodes and edges to the graph
+                  data = {nodes: nodes, edges: edges};
+
+                  var options = {
+    "configure": {
+        "enabled": false
+    },
+    "edges": {
+        "color": {
+            "inherit": true
+        },
+        "smooth": {
+            "enabled": true,
+            "type": "dynamic"
+        }
+    },
+    "interaction": {
+        "dragNodes": true,
+        "hideEdgesOnDrag": false,
+        "hideNodesOnDrag": false
+    },
+    "physics": {
+        "enabled": true,
+        "repulsion": {
+            "centralGravity": 0.2,
+            "damping": 0.09,
+            "nodeDistance": 200,
+            "springConstant": 0.05,
+            "springLength": 200
+        },
+        "solver": "repulsion",
+        "stabilization": {
+            "enabled": true,
+            "fit": true,
+            "iterations": 1000,
+            "onlyDynamicEdges": false,
+            "updateInterval": 50
+        }
+    }
+};
+
+                  
+
+
+                  
+
+                  network = new vis.Network(container, data, options);
+
+                  
+
+                  
+
+                  
+
+
+                  
+
+                  return network;
+
+              }
+              drawGraph();
+        </script>
+    </body>
+</html>

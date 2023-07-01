@@ -1,0 +1,41 @@
+credentials:
+  usernames:
+    admin:
+      email: takenote@com
+      name: admin
+      password: $2b$12$DSdSF3iyojS2ogi3CCSuPefPpHyNGhUQinAq5e8HQySECMFT/0ewu
+    trungtt:
+      email: tranthanhtrung1990@gmail.com
+      name: trungtt
+      password: $2b$12$s90nytf9wVB/8.osZA8AF.apYvfQQJAdMERzjQwyxM5IFsCTjSf.e #Tony123$
+    robin:
+      email: 
+      name: robin
+      password: $2b$12$JX0U/0DV920ILzS22DRmSezWLwJUnyBAeSujffuzn67L3prazUl9W #robinhood
+    Ami: 
+      email:
+      name: Ami
+      password: $2b$12$PwlIBfZnVbKRySeWtqPOjuMQR6xXhYzYr963i6tcUW98sHYCLxsEG # equiniti
+    Steve:
+      email:
+      name: Steve
+      password: $2b$12$PwlIBfZnVbKRySeWtqPOjuMQR6xXhYzYr963i6tcUW98sHYCLxsEG # equiniti
+    Will:
+      email:
+      name: Will
+      password: $2b$12$PwlIBfZnVbKRySeWtqPOjuMQR6xXhYzYr963i6tcUW98sHYCLxsEG # equiniti
+    laurabd:
+      email:
+      name: laurabd
+      password: $2b$12$QqSKXUU9v1GaVfPvSR7GY.rvdL0kC51O7F5JDU5OhzQsSuBOhBQEG # Takenote
+cookie:
+  expiry_days: 30
+  key: random_signature_key # Must be string
+  name: random_cookie_name
+preauthorized:
+  emails:
+  - tranthanhtrung1990@gmail.com
+
+        
+#$2b$12$i2.D3tqpOTMb0soXxioGX.rdxrX.1.JdKS3GihgnZZYeLbTBVUD1O #12345 
+#$2b$12$ZFuI6NRpnv9Q28QoCeuN0.l4Qjc0i195NSnU1UaCZdXZ5FwAdwrr #takenote

@@ -1,0 +1,5 @@
+sender:
+  email: takenote.webflow.io@gmail.com
+  pass: qsslahxyexefbaeb
+  subject: Your transcription is ready
+  ssl: smtp.gmail.com
