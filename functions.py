@@ -1,4 +1,4 @@
-import whisper
+# import whisper
 from faster_whisper import WhisperModel
 import os
 from pytube import YouTube
@@ -7,8 +7,8 @@ import plotly_express as px
 import nltk
 import plotly.graph_objects as go
 from optimum.onnxruntime import ORTModelForSequenceClassification
-from transformers import pipeline, AutoTokenizer, AutoModelForSequenceClassification, AutoModelForTokenClassification, AutoModelForSeq2SeqLM
-from sentence_transformers import SentenceTransformer, CrossEncoder, util
+from transformers import pipeline, AutoTokenizer, AutoModelForTokenClassification, AutoModelForSeq2SeqLM
+from sentence_transformers import SentenceTransformer, CrossEncoder
 import streamlit as st
 import en_core_web_lg
 import validators
@@ -17,27 +17,24 @@ import itertools
 import numpy as np
 from bs4 import BeautifulSoup   
 import base64, time
-from annotated_text import annotated_text
 import pickle, math
 import wikipedia
 from pyvis.network import Network
 import torch
-from pydub import AudioSegment
 from transformers import AutoFeatureExtractor, AutoModelForAudioXVector
-import subprocess
 from moviepy.editor import *
 from glob import glob
 from vimeo_downloader import Vimeo
 import ray
+import json
+import textwrap
 
 
-from langchain.docstore.document import Document
 from langchain.embeddings import HuggingFaceEmbeddings,HuggingFaceInstructEmbeddings
 from langchain.vectorstores import FAISS
 from langchain.chains.qa_with_sources import load_qa_with_sources_chain
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.llms import OpenAI
-from langchain import VectorDBQA
 from langchain.chains.question_answering import load_qa_chain
 from langchain.prompts import PromptTemplate
 from langchain.prompts.base import RegexParser
@@ -129,18 +126,15 @@ def load_models():
 @st.experimental_singleton(suppress_st_warning=True)
 def load_asr_model(asr_model_name):
     asr_model = whisper.load_model(asr_model_name)
-    
     return asr_model
 
 @st.experimental_singleton(suppress_st_warning=True)
 def load_fast_asr_model(asr_model_name):
     asr_model = WhisperModel(asr_model_name, device="cpu", compute_type="float32")
-
     return asr_model
 
-# @st.experimental_singleton(suppress_st_warning=True)
+# OFF function
 def load_si_model(si_model_name):
-    print(si_model_name)
     feature_extractor = AutoFeatureExtractor.from_pretrained(si_model_name)
     model = AutoModelForAudioXVector.from_pretrained(si_model_name)
     return model, feature_extractor
@@ -148,7 +142,25 @@ def load_si_model(si_model_name):
 def delete_model(model):
     del model
     
-# @st.experimental_singleton(suppress_st_warning=True)
+# OFF function
+def save_file_text(text_in, path):
+    with open(path, 'w') as f:
+        f.write(text_in)
+    
+def save_file_json(json_in, path):
+    with open(path, 'w') as f:
+        json.dump(json_in, f, indent=6)
+
+# OFF function
+def convert_ASCII_string(ascii_list):
+    return ''.join(map(chr, ascii_list))
+   
+# OFF function
+def convert_string_ASCII(a_string):
+    ASCII_values = [str(ord(character)) for character in a_string]
+    return ASCII_values
+
+# OFF function
 def process_corpus(corpus, title, embedding_model, chunk_size=1000, overlap=50):
 
     '''Process text for Semantic Search'''
@@ -163,6 +175,7 @@ def process_corpus(corpus, title, embedding_model, chunk_size=1000, overlap=50):
 
     return docsearch
 
+# OFF function
 def chunk_and_preprocess_text(text,thresh=500):
     
     """Chunk text longer than n tokens for summarization"""
@@ -188,7 +201,7 @@ def chunk_and_preprocess_text(text,thresh=500):
     
     return chunks
     
-# @st.experimental_singleton(suppress_st_warning=True)
+# OFF function
 def gen_embeddings(embedding_model):
 
     '''Generate embeddings for given model'''
@@ -205,7 +218,7 @@ def gen_embeddings(embedding_model):
 
     return embeddings
     
-# @st.experimental_memo(suppress_st_warning=True)
+# OFF function
 def embed_text(query,title,embedding_model,_emb_tok,_docsearch,chain_type="Normal"):
     try:
         '''Embed text and generate semantic search scores'''
@@ -213,7 +226,6 @@ def embed_text(query,title,embedding_model,_emb_tok,_docsearch,chain_type="Norma
         title = title.split()[0].lower()
                     
         docs = _docsearch.similarity_search_with_score(query, k=3)
-        st.write(docs)
         if chain_type == 'Normal':
 
             docs = [d[0] for d in docs]
@@ -245,175 +257,157 @@ def embed_text(query,title,embedding_model,_emb_tok,_docsearch,chain_type="Norma
         return e
     return answer
     
-# @st.experimental_singleton(suppress_st_warning=True)
+# OFF function
 def get_spacy():
     nlp = en_core_web_lg.load()
     return nlp
-             
+
+# OFF function
 def MP4ToMP3(path_to_mp4, path_to_mp3):
     FILETOCONVERT = AudioFileClip(path_to_mp4)
     FILETOCONVERT.write_audiofile(path_to_mp3)
     FILETOCONVERT.close()
 
-def download_from_youtube(url):
+def clean_text(text):
+    text = text.replace("'", "")
+    text = text.replace(",", "")
+    text = text.replace(".", "")
+    text = text.replace(" ", "_")
+    return text
+
+# OFF function
+def download_from_youtube(url, user_name, task_id):
     yt = YouTube(url, use_oauth=True, allow_oauth_cache=True)
     yt.streams \
     .filter(progressive=True, file_extension='mp4') \
     .order_by('resolution') \
     .desc() \
     .first() \
-    .download(f"temp/youtube/{st.session_state['username']}")
+    .download(f"temp/{user_name}/{task_id}")
 
-    video_file_path = glob(f"temp/youtube/{st.session_state['username']}/*.mp4")[0]
-    audio_file_path = f"temp/youtube/{st.session_state['username']}/yt_audio.mp3"
+    video_file_path = glob(f"temp/{user_name}/{task_id}/*.mp4")[0]
+    
+    audio_file_path = f"temp/{user_name}/{task_id}/{clean_text(yt.title)}.mp3"
     MP4ToMP3(video_file_path, audio_file_path)
-    audio_file_path_wav = f"temp/youtube/{st.session_state['username']}/yt_audio.wav"
-
+    
+    audio_file_path_wav = f"temp/{user_name}/{task_id}/{clean_text(yt.title)}.wav"
     MP4ToMP3(video_file_path, audio_file_path_wav)
     
     if os.path.exists(audio_file_path):
         os.remove(video_file_path)
     return audio_file_path, audio_file_path_wav, yt.title
 
-def download_from_vimeo(url):
+# OFF function
+def download_from_vimeo(url, user_name, task_id):
     v = Vimeo(url)
     vmeta = v.metadata
 
     s = v.streams
     low_stream = s[0]  # Select the best stream
-    low_stream.download(download_directory=f'temp/vimeo/{st.session_state["username"]}',
+    low_stream.download(download_directory=f'temp/{user_name}/{task_id}',
                         filename='vimeo.mp4')
-    video_file_path = glob(f"temp/vimeo/{st.session_state['username']}/*.mp4")[0]
-    audio_file_path = f"temp/vimeo/{st.session_state['username']}/vi_audio.mp3"
+    video_file_path = glob(f"temp/{user_name}/{task_id}/*.mp4")[0]
+    audio_file_path = f"temp/{user_name}/{task_id}/{clean_text(vmeta.title)}.mp3"
     
     MP4ToMP3(video_file_path, audio_file_path)
-    audio_file_path_wav = f"temp/vimeo/{st.session_state['username']}/yt_audio.wav"
+    audio_file_path_wav = f"temp/{user_name}/{task_id}/{clean_text(vmeta.title)}.wav"
     if os.path.exists(audio_file_path):
         os.remove(video_file_path)
     MP4ToMP3(video_file_path, audio_file_path_wav)
 
     return audio_file_path, audio_file_path_wav, vmeta.title 
 
-def transcribe_with_lang(model, audio_file):
-    audio = whisper.load_audio(audio_file)
-    audio = whisper.pad_or_trim(audio)
 
-    # make log-Mel spectrogram and move to the same device as the model
-    mel = whisper.log_mel_spectrogram(audio).to(model.device)
-
-    # detect the spoken language
-    _, probs = model.detect_language(mel)
-    detected_lang = max(probs, key=probs.get)
-
-    # decode the audio
-    # options = whisper.DecodingOptions(fp16 = False)
-    # result = whisper.decode(model, mel, options)
-    result = model.transcribe(audio_file, task='transcribe', language=detected_lang)
-    # print the recognized text
-    return detected_lang, result
-    
-# @st.experimental_memo(suppress_st_warning=True)
-def inference(state, _asr_model, type, is_fast_transcrption):
-    '''Convert Youtube video or Audio upload to text'''
-    if type == 'upload':
-        # language, results = transcribe_with_lang(_asr_model, "./temp/audio.mp3")
-        # st.write(is_fast_transcrption)
-        if is_fast_transcrption:
-            results = {}
-            segments, _ = _asr_model.transcribe(f"./temp/{st.session_state['username']}/audio.mp3",  
-                                                   beam_size=1, 
-                                                   word_timestamps=True)
-            whisper_results = []
-            for segment in segments:
-                whisper_results.append(segment._asdict())
-
-            # st.write(whisper_results)
-            results['text'] = ' '.join([segment['text'] for segment in whisper_results])
-
-            results['segments'] = whisper_results #[{'start':segment.start, 'end':segment.end, 'text':segment.text}for segment in segments]
-            # st.write(results)
-        else:
-            results = _asr_model.transcribe(f"./temp/{st.session_state['username']}/audio.mp3", task='transcribe', language='en')
-        return results['text'], "Transcribed Audio", results['segments'], "en"
-
-    elif type == 'url':
-        if validators.url(state):
-            with st.spinner("Extract audio from video..."):
-                if 'vimeo' in state:
-                    url_file_mp3, url_file_wav, title = download_from_vimeo(state)
-                else:
-                    url_file_mp3, url_file_wav, title = download_from_youtube(state)
-                st.success("Audio extraction done!")
-            if os.path.exists(url_file_mp3):
-                import shutil
-                shutil.copy(url_file_mp3, f"./temp/si/{st.session_state['username']}/{url_file_mp3.split('/')[-1]}")
-                shutil.copy(url_file_wav, f"./temp/si/{st.session_state['username']}/{url_file_wav.split('/')[-1]}")
-                # language, results = transcribe_with_lang(_asr_model, url_file_mp3)
-                if is_fast_transcrption:
-                    results = {}
-                    segments, _ = _asr_model.transcribe(url_file_mp3,  
-                                                        beam_size=1, 
-                                                        word_timestamps=True)
-                    whisper_results = []
-                    for segment in segments:
-                        whisper_results.append(segment._asdict())
-
-                    # st.write(whisper_results)
-                    results['text'] = ' '.join([segment['text'] for segment in whisper_results])
-
-                    results['segments'] = whisper_results
-                else:
-                    results = _asr_model.transcribe(url_file_mp3, task='transcribe', language='en')
-        else:
-            return "no URL existed!", "No audio found", None
-        return results['text'], title, results['segments'], "en"
- 
-def levenshtein_ratio_and_distance(s, t, ratio_calc = False):
-    """ levenshtein_ratio_and_distance:
-        Calculates levenshtein distance between two strings.
-        If ratio_calc = True, the function computes the
-        levenshtein distance ratio of similarity between two strings
-        For all i and j, distance[i,j] will contain the Levenshtein
-        distance between the first i characters of s and the
-        first j characters of t
-    """
-    # Initialize matrix of zeros
-    rows = len(s)+1
-    cols = len(t)+1
-    distance = np.zeros((rows,cols),dtype = int)
-
-    # Populate matrix of zeros with the indeces of each character of both strings
-    for i in range(1, rows):
-        for k in range(1,cols):
-            distance[i][0] = i
-            distance[0][k] = k
-
-    # Iterate over the matrix to compute the cost of deletions,insertions and/or substitutions    
-    for col in range(1, cols):
-        for row in range(1, rows):
-            if s[row-1] == t[col-1]:
-                cost = 0 # If the characters are the same in the two strings in a given position [i,j] then the cost is 0
+# OFF function
+def matching_tran_seg(segs, tran):
+    count_tran = 0
+    new_segs = []
+    for idx, seg in enumerate(segs):
+        add_up = False
+        if idx == 0:
+            seg['speaker'] = tran[0]['speaker']
+            new_segs.append(seg)
+            continue
+            
+        # tran[stop] < seg[start]
+        if (seg['start'] >= tran[count_tran]['stop']):
+            if count_tran < len(tran) - 1:
+                count_tran += 1
+                add_up = True
+            elif count_tran == len(tran):
+                seg['speaker'] = tran[count_tran]['speaker']
             else:
-                # In order to align the results with those of the Python Levenshtein package, if we choose to calculate the ratio
-                # the cost of a substitution is 2. If we calculate just distance, then the cost of a substitution is 1.
-                if ratio_calc == True:
-                    cost = 2
+                continue
+        
+        # seg[stop] < tran[start]
+        if (seg['end'] < tran[count_tran]['start']):
+            if idx > 0 and count_tran > 0:
+                if abs(seg['end']  - tran[count_tran]['start']) >= abs(seg['start'] - tran[count_tran - 1]['stop']):
+                    seg['speaker'] = tran[count_tran]['speaker']
                 else:
-                    cost = 1
-            distance[row][col] = min(distance[row-1][col] + 1,      # Cost of deletions
-                                 distance[row][col-1] + 1,          # Cost of insertions
-                                 distance[row-1][col-1] + cost)     # Cost of substitutions
-    if ratio_calc == True:
-        # Computation of the Levenshtein Distance Ratio
-        Ratio = ((len(s)+len(t)) - distance[row][col]) / (len(s)+len(t))
-        return Ratio
-    else:
-        # print(distance) # Uncomment if you want to see the matrix showing how the algorithm computes the cost of deletions,
-        # insertions and/or substitutions
-        # This is the minimum number of edits needed to convert string a to string b
-        return "The strings are {} edits away".format(distance[row][col])
+                    seg['speaker'] = segs[idx-1]['speaker']
+        
+        # seg[start] < tran[start] < seg[end]
+        if seg['start'] <= tran[count_tran]['start'] and seg['end'] > tran[count_tran]['start']:
+            if abs(seg['start'] - tran[count_tran]['start']) >= abs(seg['end'] - tran[count_tran]['start']):
+                seg['speaker'] = tran[count_tran]['speaker']
+            else: 
+                if count_tran < (len(tran) - 1) and add_up == False:
+                    seg['speaker'] =  tran[count_tran + 1]['speaker']
+                    count_tran += 1
+                else:
+                    seg['speaker'] = tran[count_tran]['speaker']
+        
+        # tran[start] < seg[start] < seg[end] < tran[end]
+        if (seg['start'] >= tran[count_tran]['start']) and (seg['end'] <= tran[count_tran]['stop']):
+            seg['speaker'] = tran[count_tran]['speaker']
+        
+        # tran[start] < tran[stop] < seg[end]
+        if seg['start'] <= tran[count_tran]['stop'] and tran[count_tran]['stop'] < seg['end']:
+            if abs(seg['start'] - tran[count_tran]['stop']) >= abs(seg['end'] - tran[count_tran]['stop']):
+                seg['speaker'] = tran[count_tran]['speaker']
+            else: 
+                if count_tran < (len(tran) - 1) and add_up == False:
+                    seg['speaker'] =  tran[count_tran + 1]['speaker']
+                    count_tran += 1
+                else:
+                    seg['speaker'] = tran[count_tran]['speaker']
+                    
+        if 'speaker' not in seg.keys() and idx > 0:
+            seg['speaker'] = segs[idx - 1]['speaker']
+            
+        new_segs.append(seg)
+    return new_segs
     
-      
+# OFF function
+def transcribe_audio(_asr_model, audio_file):
+    results = {}
+    segments, _ = _asr_model.transcribe(audio_file,  
+                                    language='en',
+                                    beam_size=1, 
+                                    word_timestamps=True)
+    whisper_results = []
+    for segment in segments:
+        whisper_results.append(segment._asdict())
+    results['text'] = ' '.join([segment['text'] for segment in whisper_results])
+    results['segments'] = whisper_results
+    return results
+
+# OFF function
+def inference(_asr_model, file_path, user, task_id):
+    if ('./temp/' not in file_path) or ('http' in file_path) or ('.com' in file_path): # Download file from link
+        if validators.url(file_path):
+            if 'vimeo' in file_path:
+                url_file_mp3, url_file_wav, title = download_from_vimeo(file_path, user, task_id)
+            else:
+                url_file_mp3, url_file_wav, title = download_from_youtube(file_path, user, task_id)
+            
+            if os.path.exists(url_file_mp3):
+                file_path = url_file_mp3
+    
+    results = transcribe_audio(_asr_model, file_path)  
+    return results['text'], "Transcribed Audio", results['segments'], "en", file_path
+
 # @st.experimental_memo(suppress_st_warning=True)
 def sentiment_pipe(audio_text):
     '''Determine the sentiment of the text'''
@@ -571,21 +565,17 @@ def highlight_entities(article_content,summary_output):
     markdown_start_green = "<mark class=\"entity\" style=\"background: rgb(121, 236, 121);\">"
     markdown_end = "</mark>"
     summary_output = summary_output.replace("++", "plus plus")
+    summary_output = summary_output.replace('***', '*')
+
     matched_entities, unmatched_entities = get_and_compare_entities(article_content,summary_output)
     
-    print(summary_output)
-    print(matched_entities)
     for entity in matched_entities:
+        print(summary_output)
+        print(entity)
         summary_output = re.sub(f'({entity})(?![^rgb\(]*\))',markdown_start_green + re.escape(entity) + markdown_end,summary_output)
 
     for entity in unmatched_entities:
         summary_output = re.sub(f'({entity})(?![^rgb\(]*\))',markdown_start_red + re.escape(entity) + markdown_end,summary_output)
-    
-    print("")
-    print(summary_output)
-    
-    print("")
-    print(summary_output)
     
     soup = BeautifulSoup(summary_output, features="html.parser")
 
@@ -595,7 +585,8 @@ def highlight_entities(article_content,summary_output):
 def display_df_as_table(model,top_k,score='score'):
     '''Display the df with text and scores as a table'''
     
-    df = pd.DataFrame([(hit[score],passages[hit['corpus_id']]) for hit in model[0:top_k]],columns=['Score','Text'])
+    df = pd.DataFrame([(hit[score],
+                        passages[hit['corpus_id']]) for hit in model[0:top_k]],columns=['Score','Text'])
     df['Score'] = round(df['Score'],2)
     
     return df   
@@ -615,7 +606,6 @@ def fin_ext(text):
     return make_spans(text,results)
 
 ## Knowledge Graphs code
-
 def extract_relations_from_model_output(text):
     relations = []
     relation, subject, relation, object_ = '', '', '', ''
@@ -940,5 +930,8 @@ def estimate_ops_time(length_audio):
     """
     # 14400 seconds need  9720 seconds to handle
     return length_audio * 9720 / 14400 
+
+# TODO: database handler
+
 
 sent_pipe, sum_pipe, ner_pipe, cross_encoder, kg_model, kg_tokenizer, emb_tokenizer, sbert  = load_models()
