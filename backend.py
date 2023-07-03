@@ -5,24 +5,25 @@ from datetime import datetime
 import yaml
 from yaml.loader import SafeLoader
 from transformers import pipeline as hf_pipe
-from pyannote.audio import Pipeline as pynote_pipe
-from pydub import AudioSegment
 import json
+import gc
 
 def sentimet_audio(passage):
     sentiment, sentences = sentiment_pipe(passage)
     return sentiment, sentences
 
-def transcribe_audio(audio_path, user, task_id):
+def transcribe_audio_whisperX(audio_path, user, task_id):
     start_time = time.time()
-    asr_model = load_fast_asr_model("medium")
-
+    asr_model = load_whisperx_model("medium")
     texts, title, segments, language, audio_path = inference(asr_model, audio_path, user, task_id)
+    
     end_time = time.time()
     passages = clean_text(texts, language)
-    
+    print(end_time - start_time)
+    gc.collect()
+    torch.cuda.empty_cache()
     del asr_model
-        
+
     return passages, title, segments, language, end_time - start_time, audio_path
 
 def summarize_audio(passages, min_len, max_len):
@@ -63,6 +64,17 @@ def summarize_audio(passages, min_len, max_len):
 
     return entity_match_html
 
+def diarize_speaker_whisperX(audio_path, segments):
+    colors = ['red', 'green', 'yellow','blue', 'cyan', 'lime', 'magenta', 'pink', 'orange']
+    align_result = align_speaker(segments, audio_path)
+    result = assign_speaker(align_result, audio_path)
+    trans = []
+    for seg in result["segments"]:
+        dict_spek  = {}
+        dict_spek[seg["speaker"]] = seg['text']
+        trans.append(dict_spek) 
+    return trans
+    
 def diarize_speaker(audio_path, segments):
     colors = ['red', 'green', 'yellow','blue', 'cyan', 'lime', 'magenta', 'pink', 'orange']
     pipeline = pynote_pipe.from_pretrained("pyannote/speaker-diarization@2.1",
@@ -112,7 +124,7 @@ if __name__ == "__main__":
             # Processing task
             # 1. transcribe
             print("TRANSCRIBING...")
-            passages, title, segments, language, running_time, audio_path  = transcribe_audio(audio_path_raw, user, task_id)
+            passages, title, segments, language, running_time, audio_path  = transcribe_audio_whisperX(audio_path_raw, user, task_id)
                     
             # Save passges into file, 
             save_file_text(passages, f'./temp/{user}/{task_id}/passages.txt')
@@ -139,7 +151,8 @@ if __name__ == "__main__":
                 
             # 4. Speaker Identification
             print("DIARIZE...")
-            trans_with_spk = diarize_speaker(audio_path, segments)
+            # trans_with_spk = diarize_speaker(audio_path, segments)
+            trans_with_spk = diarize_speaker_whisperX(audio_path, segments)
             save_file_json(trans_with_spk, f'./temp/{user}/{task_id}/matching_speaker.json')
                             
             # Delete task
