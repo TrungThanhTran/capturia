@@ -119,27 +119,32 @@ def load_models():
     '''Load and cache all the models to be used'''
     q_model = ORTModelForSequenceClassification.from_pretrained(
         "nickmuchi/quantized-optimum-finbert-tone")
-    ner_model = AutoModelForTokenClassification.from_pretrained(
-        "xlm-roberta-large-finetuned-conll03-english")
+    q_tokenizer = AutoTokenizer.from_pretrained(
+        "nickmuchi/quantized-optimum-finbert-tone")
+    sent_pipe = pipeline("text-classification",
+                         model=q_model, tokenizer=q_tokenizer)
+    
+    ner_model = None #AutoModelForTokenClassification.from_pretrained(
+        # "xlm-roberta-large-finetuned-conll03-english")
+    ner_tokenizer =  None #AutoTokenizer.from_pretrained(
+        # "xlm-roberta-large-finetuned-conll03-english")
+    ner_pipe = None #pipeline("ner", model=ner_model,
+                #    tokenizer=ner_tokenizer, grouped_entities=True)
     # AutoModelForSeq2SeqLM.from_pretrained("Babelscape/rebel-large")
     kg_model = None
     # AutoTokenizer.from_pretrained("Babelscape/rebel-large")
     kg_tokenizer = None
-    q_tokenizer = AutoTokenizer.from_pretrained(
-        "nickmuchi/quantized-optimum-finbert-tone")
-    ner_tokenizer = AutoTokenizer.from_pretrained(
-        "xlm-roberta-large-finetuned-conll03-english")
+
+
     # AutoTokenizer.from_pretrained('google/flan-t5-xl') # Semantic Search
     emb_tokenizer = None
-    sent_pipe = pipeline("text-classification",
-                         model=q_model, tokenizer=q_tokenizer)
-    sum_pipe = pipeline("summarization", model="facebook/bart-large-cnn",
-                        tokenizer="facebook/bart-large-cnn", clean_up_tokenization_spaces=True)
-    ner_pipe = pipeline("ner", model=ner_model,
-                        tokenizer=ner_tokenizer, grouped_entities=True)
+    
+    sum_pipe = None #pipeline("summarization", model="facebook/bart-large-cnn",
+                        #tokenizer="facebook/bart-large-cnn", clean_up_tokenization_spaces=True)
+
     # CrossEncoder('cross-encoder/mmarco-mMiniLMv2-L12-H384-v1') #cross-encoder/ms-marco-MiniLM-L-12-v2
     cross_encoder = None
-    sbert = SentenceTransformer('all-MiniLM-L6-v2')
+    sbert = None #SentenceTransformer('all-MiniLM-L6-v2')
 
     return sent_pipe, sum_pipe, ner_pipe, cross_encoder, kg_model, kg_tokenizer, emb_tokenizer, sbert
 
@@ -443,7 +448,6 @@ def transcribe_audio(_asr_model, audio_file):
     # segments = json.dumps(result["segments"], indent=4)
     results['text'] = ' '.join([segment['text']
                                for segment in result['segments']])
-    print(results['text'])
     results['segments'] = result['segments']
     return results
 
@@ -469,19 +473,15 @@ def assign_speaker(align_result, audio_file):
     diarize_model = whisperx.DiarizationPipeline(
             use_auth_token=model_config['transcribe']['hf_token'],
             device=model_config['transcribe']['device'])
-
-    print('good !')
-
-    if 'wav' not in audio_file:
-        audio_file_wav = audio_file.replace("mp3", "wav")
-                
+    try:
+        audio_file_wav = audio_file
+        diarize_segments = diarize_model(audio_file_wav)
+    except Exception as e:                
         # convert mp3 file to wav filetr
         sound = AudioSegment.from_file(audio_file)
         sound.export(audio_file_wav, format="wav")
-    else:
-        audio_file_wav = audio_file
-        
-    diarize_segments = diarize_model(audio_file_wav)
+        diarize_segments = diarize_model(audio_file_wav)
+
     result = whisperx.assign_word_speakers(diarize_segments, align_result)
     gc.collect()
     torch.cuda.empty_cache()
@@ -545,7 +545,11 @@ def clean_text(text, language="en"):
         text = re.sub(r"@\S+", " ", text)  # mentions
         text = re.sub(r"#\S+", " ", text)  # hastags
         text = re.sub(r"\s{2,}", " ", text)  # over spaces
-
+        text = text.replace("$", "\$")
+        text = text.replace("'", "\'")
+        text = text.replace("*", "\*")
+        text = text.replace("#", "\#")
+        text = text.replace("!", "\!")
     return text
 
 

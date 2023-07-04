@@ -71,31 +71,13 @@ def diarize_speaker_whisperX(audio_path, segments):
     trans = []
     for seg in result["segments"]:
         dict_spek  = {}
-        dict_spek[seg["speaker"]] = seg['text']
+        dict_spek['text'] = seg['text']
+        dict_spek['speaker'] = seg['speaker']
+        dict_spek['start'] = seg['start']
+        dict_spek['end'] = seg['end']
         trans.append(dict_spek) 
     return trans
     
-def diarize_speaker(audio_path, segments):
-    colors = ['red', 'green', 'yellow','blue', 'cyan', 'lime', 'magenta', 'pink', 'orange']
-    pipeline = pynote_pipe.from_pretrained("pyannote/speaker-diarization@2.1",
-                                             use_auth_token="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")
-    
-    sound = AudioSegment.from_file(audio_path)
-    sound.export(audio_path, format="wav")
-                            
-    diarization = pipeline(audio_path)
-    
-    tran = []
-    list_speakers = []
-    for turn, _, speaker in diarization.itertracks(yield_label=True):
-        tran.append({'start':turn.start,
-                'stop':turn.end,
-                'speaker':speaker})
-        
-    list_speakers.append(speaker)
-    transcription_down = matching_tran_seg(segments, tran)
-    return transcription_down
-
 if __name__ == "__main__":
     dbhandler = DBHandler()
     emailsender = Email_Sender()

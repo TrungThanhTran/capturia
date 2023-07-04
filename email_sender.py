@@ -18,6 +18,7 @@ class Email_Sender():
         self.email_password = email_config['sender']['pass']
         self.subject = email_config['sender']['subject']
         self.ssl = email_config['sender']['ssl']
+        self.host = email_config['sender']['host']
 
     def get_body(self, time_stamp, task_id):
         body = f"""<td valign="top"
@@ -60,14 +61,14 @@ class Email_Sender():
                                                                                                             <p class="MsoNormal"
                                                                                                                 align="center"
                                                                                                                 style="text-align:center">
-                                                                                                                <a href="https://takenote.webflow.io/"
+                                                                                                                <a href="https://www.takenote.ai/"
                                                                                                                     target="_blank"
-                                                                                                                    data-saferedirecturl="https://takenote.webflow.io/"><span
+                                                                                                                    data-saferedirecturl="https://www.takenote.ai/"><span
                                                                                                                         style="text-decoration:none"><img
                                                                                                                             width="1000"
                                                                                                                             style="width:2in;"
                                                                                                                             id="takenote"
-                                                                                                                            src="https://www.capturia.io/media/9ef6936d0816b5ae764ae9ecfafe029e2fde956f9028760baa6f18bc.png"
+                                                                                                                            src="{self.host}/media/9ef6936d0816b5ae764ae9ecfafe029e2fde956f9028760baa6f18bc.png"
                                                                                                                             class="CToWUd"
                                                                                                                             data-bit="iit"></span></a><u></u><u></u>
                                                                                                             </p>
@@ -161,9 +162,9 @@ class Email_Sender():
                                                                                                                 style="font-size:10.5pt;font-family:&quot;Open Sans&quot;,sans-serif;color:#4a4a4a">Order
                                                                                                                 #:</span></strong><span
                                                                                                             style="font-size:10.5pt;font-family:&quot;Open Sans&quot;,sans-serif;color:#4a4a4a">
-                                                                                                            <a href="https://capturia.io/MyFiles?task={task_id}"
+                                                                                                            <a href="{self.host}/MyFiles?task={task_id}"
                                                                                                                 target="_blank"
-                                                                                                                data-saferedirecturl="https://capturia.io/MyFiles?task={task_id}"><span
+                                                                                                                data-saferedirecturl="{self.host}/MyFiles?task={task_id}"><span
                                                                                                                     style="color:#4a90e2;text-decoration:none">{task_id}</span></a><u></u><u></u></span>
                                                                                                     </p>
                                                                                                 </div>

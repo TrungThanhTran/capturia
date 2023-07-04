@@ -285,7 +285,7 @@ if authentication_status:
 
         for seg in match_result:
                 st.markdown("\n" + 'time block: from ' + str(int(seg["start"])) + 's to ' + str(int(seg["end"])) + 's',  unsafe_allow_html=True) 
-                st.markdown(f'<span style="color:blue">{seg["speaker"]}</span> :' + seg['text'],  unsafe_allow_html=True)
+                st.markdown(f'<span style="color:blue">{seg["speaker"]}</span> :' + ' ' + seg['text'],  unsafe_allow_html=True)
                 st.markdown("\n", unsafe_allow_html=True)        
 
     else:
