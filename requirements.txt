@@ -32,6 +32,9 @@ transformers==4.28.1
 validators==0.18.2
 vimeo_downloader==0.4.1
 wget==3.2
+altair==4.0
 wikipedia==1.4.0
+faster_whisper==0.5.0
 en_core_web_lg @ https://huggingface.co/spacy/en_core_web_lg/resolve/main/en_core_web_lg-any-py3-none-any.whl
 faster-whisper @ https://github.com/guillaumekln/faster-whisper/archive/a4f1cc8f11433e454c3934442b5e1a4ed5e865c3.tar.gz
+python3 -m pip install --force-reinstall https://github.com/yt-dlp/yt-dlp/archive/master.tar.gz

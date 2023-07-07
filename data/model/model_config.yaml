@@ -1,0 +1,5 @@
+transcribe:
+  device: cuda
+  batch_size: 16
+  compute_type: float16
+  hf_token: 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

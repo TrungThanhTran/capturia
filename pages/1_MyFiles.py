@@ -27,6 +27,9 @@ image_directory = "data/logo/logo.png"
 image_logo = Image.open(image_directory)
 dbhandler = DBHandler()
 
+with open('data/email/email_config.yaml') as file:
+    model_config = yaml.load(file, Loader=SafeLoader)
+
 st.set_page_config(page_title="Myfiles", page_icon=image_logo, layout='wide')
 
 def convert_ASCII_string(ascii_list):
@@ -37,7 +40,7 @@ def convert_string_ASCII(a_string):
     return '-'.join(ASCII_values)
 
 def convert_url(task_id, user):
-    return f'https://capturia.io/MyFiles?task={task_id}__{convert_string_ASCII(user)}'
+    return f'{model_config["sender"]["host"]}/MyFiles?task={task_id}__{convert_string_ASCII(user)}'
 
 
 def extract_queue(queue, status=''):
@@ -285,7 +288,7 @@ if authentication_status:
 
         for seg in match_result:
                 st.markdown("\n" + 'time block: from ' + str(int(seg["start"])) + 's to ' + str(int(seg["end"])) + 's',  unsafe_allow_html=True) 
-                st.markdown(f'<span style="color:blue">{seg["speaker"]}</span> :' + seg['text'],  unsafe_allow_html=True)
+                st.markdown(f'<span style="color:blue">{seg["speaker"]}</span> :' + ' ' + seg['text'],  unsafe_allow_html=True)
                 st.markdown("\n", unsafe_allow_html=True)        
 
     else:

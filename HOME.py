@@ -124,6 +124,9 @@ if __name__ == "__main__":
                 uniq_id = uuid.uuid4()
                 
                 # check existed folder
+                if not os.path.exists(f'./temp/'):
+                    os.mkdir(f'./temp/')
+                    
                 if not os.path.exists(f'./temp/{username}'):
                     os.mkdir(f'./temp/{username}')
                     

@@ -3,3 +3,4 @@ sender:
   pass: qsslahxyexefbaeb
   subject: Your transcription is ready
   ssl: smtp.gmail.com
+  host: http://www.capturia.io:8501 #https://www.capturia.io
