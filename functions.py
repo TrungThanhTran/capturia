@@ -36,6 +36,8 @@ import yaml
 import gc
 from yaml.loader import SafeLoader
 from pydub import AudioSegment
+from yt_dlp import YoutubeDL
+import subprocess
 
 
 from langchain.embeddings import HuggingFaceEmbeddings,HuggingFaceInstructEmbeddings
@@ -110,11 +112,25 @@ initial_qa_template = (
     "answer the question: {question}\n.\n"
 )
 
+#### Classes #####
+class MyLogger(object):
+    def debug(self, msg):
+        pass
+
+    def warning(self, msg):
+        pass
+
+    def error(self, msg):
+        print(msg)
+        
 ###################### Functions #######################################################################################
 
+
+def my_hook(d):
+    if d['status'] == 'finished':
+        print('Done downloading, now converting ...')
+        
 # @st.experimental_singleton(suppress_st_warning=True)
-
-
 def load_models():
     '''Load and cache all the models to be used'''
     q_model = ORTModelForSequenceClassification.from_pretrained(
@@ -316,13 +332,14 @@ def get_spacy():
     return nlp
 
 # OFF function
-
-
 def MP4ToMP3(path_to_mp4, path_to_mp3):
     FILETOCONVERT = AudioFileClip(path_to_mp4)
     FILETOCONVERT.write_audiofile(path_to_mp3)
     FILETOCONVERT.close()
-
+    
+def MP3ToWAC(path_to_mp3, path_to_wav):
+    sound = AudioSegment.from_file(path_to_mp3)
+    sound.export(path_to_wav, format="wav")
 
 def clean_text(text):
     text = text.replace("'", "")
@@ -332,32 +349,61 @@ def clean_text(text):
     return text
 
 # OFF function
-
-
 def download_from_youtube(url, user_name, task_id):
-    yt = YouTube(url, use_oauth=True, allow_oauth_cache=True)
-    yt.streams \
-        .filter(progressive=True, file_extension='mp4') \
-        .order_by('resolution') \
-        .desc() \
-        .first() \
-        .download(f"temp/{user_name}/{task_id}")
+    try:
+        yt = YouTube(url, use_oauth=True, allow_oauth_cache=True)
+        yt.streams \
+            .filter(progressive=True, file_extension='mp4') \
+            .order_by('resolution') \
+            .desc() \
+            .first() \
+            .download(f"temp/{user_name}/{task_id}")
+        title = yt.title
+        
+        video_file_path = glob(f"temp/{user_name}/{task_id}/*.mp4")[0]
+        if os.path.exists(video_file_path):
+            audio_file_path = f"temp/{user_name}/{task_id}/{clean_text(title)}.mp3"
+            MP4ToMP3(video_file_path, audio_file_path)
 
-    video_file_path = glob(f"temp/{user_name}/{task_id}/*.mp4")[0]
+            audio_file_path_wav = f"temp/{user_name}/{task_id}/{clean_text(title)}.wav"
+            MP4ToMP3(video_file_path, audio_file_path_wav)
 
-    audio_file_path = f"temp/{user_name}/{task_id}/{clean_text(yt.title)}.mp3"
-    MP4ToMP3(video_file_path, audio_file_path)
+            if os.path.exists(audio_file_path):
+                os.remove(video_file_path)
+    except:    
+        with YoutubeDL() as ydl:
+            info_dict = ydl.extract_info(url, download=False)
+            #   print(info_dict)
+            title = info_dict.get('title', None)
+            title = title.replace(" ","_")
+        
+        ydl_opts = {
+            'format': 'bestaudio/best',
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            }],
+            'logger': MyLogger(),
+            'progress_hooks': [my_hook],
+            'outtmpl': f'temp/{user_name}/{task_id}/{clean_text(title)}'
+        }
+        with YoutubeDL(ydl_opts) as ydl:
+            ydl.download(url)
+        
+        # This is a stupid approach but just keep this for code template
+        # p = subprocess.Popen(f"ffmpeg -i {yt_down_file} -c:v libx264 -preset slow -crf 22 -c:a aac -b:a 128k {yt_down_file.replace('.webm', '')}.mp4", 
+        #                      stdout=subprocess.PIPE, shell=True)
+        # p.wait()
+    
+        audio_file_path = f"temp/{user_name}/{task_id}/{clean_text(title)}.mp3"
+        audio_file_path_wav = f"temp/{user_name}/{task_id}/{clean_text(title)}.wav"
+        MP3ToWAC(audio_file_path, audio_file_path_wav)
 
-    audio_file_path_wav = f"temp/{user_name}/{task_id}/{clean_text(yt.title)}.wav"
-    MP4ToMP3(video_file_path, audio_file_path_wav)
+    return audio_file_path, audio_file_path_wav, title
 
-    if os.path.exists(audio_file_path):
-        os.remove(video_file_path)
-    return audio_file_path, audio_file_path_wav, yt.title
 
 # OFF function
-
-
 def download_from_vimeo(url, user_name, task_id):
     v = Vimeo(url)
     vmeta = v.metadata
@@ -446,9 +492,22 @@ def transcribe_audio(_asr_model, audio_file):
     result = _asr_model.transcribe(
         audio, batch_size=model_config['transcribe']['batch_size'])
     # segments = json.dumps(result["segments"], indent=4)
-    results['text'] = ' '.join([segment['text']
+    results['text'] = ' '.join([clean_text(segment['text'], 'en')
                                for segment in result['segments']])
-    results['segments'] = result['segments']
+    clean_segments = []
+    for seg in result['segments']:
+        temp_dict = {}
+        temp_text = clean_text(seg['text'], 'en')
+        if (temp_text != "")\
+            or (len(temp_text) > 0)\
+            or (temp_text != None)\
+            or (temp_text != ' ')\
+            or (temp_text != '  '):
+            temp_dict['text'] = temp_text
+            temp_dict['start'] = seg['start']
+            temp_dict['end'] = seg['end']
+            clean_segments.append(temp_dict)
+    results['segments'] = clean_segments
     return results
 
 
@@ -508,8 +567,6 @@ def inference(_asr_model, file_path, user, task_id):
     return results['text'], "Transcribed Audio", results['segments'], "en", file_path
 
 # @st.experimental_memo(suppress_st_warning=True)
-
-
 def sentiment_pipe(audio_text):
     '''Determine the sentiment of the text'''
 
@@ -519,8 +576,6 @@ def sentiment_pipe(audio_text):
     return audio_sentiment, audio_sentences
 
 # @ray.remote
-
-
 def summarize_text(sum_pipe, text_to_summarize, max_len, min_len):
     '''Summarize text with HF model'''
 
@@ -535,27 +590,34 @@ def summarize_text(sum_pipe, text_to_summarize, max_len, min_len):
     return summarized_text
 
 # @st.experimental_memo(suppress_st_warning=True)
-
-
 def clean_text(text, language="en"):
     '''Clean all text'''
     if language == "en":
-        text = text.encode("ascii", "ignore").decode()  # unicode
-        text = re.sub(r"https*\S+", " ", text)  # url
-        text = re.sub(r"@\S+", " ", text)  # mentions
-        text = re.sub(r"#\S+", " ", text)  # hastags
-        text = re.sub(r"\s{2,}", " ", text)  # over spaces
-        text = text.replace("$", "\$")
-        text = text.replace("'", "\'")
-        text = text.replace("*", "\*")
-        text = text.replace("#", "\#")
-        text = text.replace("!", "\!")
+        if isinstance(text, str):
+            temp_text = ""
+            for i in text:
+                if not i.isascii():
+                    continue
+                temp_text += i
+            text = temp_text
+            text = text.encode("ascii", "ignore").decode()
+            text = re.sub(r"https*\S+", " ", text)  # url
+            text = re.sub(r"@\S+", " ", text)  # mentions
+            text = re.sub(r"#\S+", " ", text)  # hastags
+            text = re.sub(r"\s{2,}", " ", text)  # over spaces
+            text = text.replace("$", "\$")
+            text = text.replace("'", "\'")
+            text = text.replace("*", "\*")
+            text = text.replace("#", "\#")
+            text = text.replace("!", "\!")
+            text = text.replace("?", "")
+        else:
+            return None
     return text
 
 
 def chunk_long_text(text, threshold, window_size=3, stride=2):
     '''Preprocess text and chunk for sentiment analysis'''
-
     # Convert cleaned text into sentences
     sentences = sent_tokenize(text)
     out = []
@@ -580,7 +642,6 @@ def chunk_long_text(text, threshold, window_size=3, stride=2):
 
     return passages
 
-
 def transcript_downloader(raw_text, text_button, header="_", user_name="admin"):
     b64 = base64.b64encode(raw_text.encode())
     new_filename = f"transcript_{header}_{user_name}_{time_str}.txt"
@@ -595,8 +656,6 @@ def transcript_downloader(raw_text, text_button, header="_", user_name="admin"):
     st.markdown(href, unsafe_allow_html=True)
 
 # @st.experimental_memo(suppress_st_warning=True)
-
-
 def get_all_entities_per_sentence(text):
     doc = nlp(''.join(text))
 
@@ -620,8 +679,6 @@ def get_all_entities_per_sentence(text):
     return entities_all_sentences
 
 # @st.experimental_memo(suppress_st_warning=True)
-
-
 def get_all_entities(text):
     all_entities_per_sentence = get_all_entities_per_sentence(text)
     return list(itertools.chain.from_iterable(all_entities_per_sentence))

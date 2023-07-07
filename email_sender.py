@@ -65,7 +65,7 @@ class Email_Sender():
                                                                                                                     target="_blank"
                                                                                                                     data-saferedirecturl="https://www.takenote.ai/"><span
                                                                                                                         style="text-decoration:none"><img
-                                                                                                                            width="1000"
+                                                                                                                            width="500"
                                                                                                                             style="width:2in;"
                                                                                                                             id="takenote"
                                                                                                                             src="{self.host}/media/9ef6936d0816b5ae764ae9ecfafe029e2fde956f9028760baa6f18bc.png"

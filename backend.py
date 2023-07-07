@@ -18,7 +18,7 @@ def transcribe_audio_whisperX(audio_path, user, task_id):
     texts, title, segments, language, audio_path = inference(asr_model, audio_path, user, task_id)
     
     end_time = time.time()
-    passages = clean_text(texts, language)
+    passages = texts
     print(end_time - start_time)
     gc.collect()
     torch.cuda.empty_cache()
@@ -69,12 +69,16 @@ def diarize_speaker_whisperX(audio_path, segments):
     align_result = align_speaker(segments, audio_path)
     result = assign_speaker(align_result, audio_path)
     trans = []
+
     for seg in result["segments"]:
         dict_spek  = {}
-        dict_spek['text'] = seg['text']
-        dict_spek['speaker'] = seg['speaker']
-        dict_spek['start'] = seg['start']
-        dict_spek['end'] = seg['end']
+        try:
+            dict_spek['text'] = seg['text']
+            dict_spek['speaker'] = seg['speaker']
+            dict_spek['start'] = seg['start']
+            dict_spek['end'] = seg['end']
+        except:
+            continue
         trans.append(dict_spek) 
     return trans
     
