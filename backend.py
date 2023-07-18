@@ -1,77 +1,41 @@
 from functions import *
 from database import DBHandler
+from database_aws import S3_Handler, SQS_Handler
 from email_sender import Email_Sender
 from datetime import datetime
-import yaml
-from yaml.loader import SafeLoader
-from transformers import pipeline as hf_pipe
 import json
 import gc
+from glob import glob
+
 
 def sentimet_audio(passage):
     sentiment, sentences = sentiment_pipe(passage)
     return sentiment, sentences
 
+
 def transcribe_audio_whisperX(audio_path, user, task_id):
     start_time = time.time()
     asr_model = load_whisperx_model("medium")
-    texts, title, segments, language, audio_path = inference(asr_model, audio_path, user, task_id)
-    
+    texts, title, segments, language, audio_path = inference(
+        asr_model, audio_path, user, task_id)
+
     end_time = time.time()
     passages = texts
-    print(end_time - start_time)
     gc.collect()
     torch.cuda.empty_cache()
     del asr_model
 
     return passages, title, segments, language, end_time - start_time, audio_path
 
-def summarize_audio(passages, min_len, max_len):
-    sum_pipe = hf_pipe("summarization",
-                        model="facebook/bart-large-cnn", 
-                        tokenizer="facebook/bart-large-cnn",
-                        clean_up_tokenization_spaces=True)
-
-    text_to_summarize = chunk_and_preprocess_text(passages)
-    
-    try:
-        if len(passages) < min_len:
-            summarized_text = passages
-        else:
-            summarized_text = summarize_text(sum_pipe, 
-                                             text_to_summarize,
-                                             max_len=max_len,
-                                             min_len=min_len)
-            if len(summarized_text) > len(passages):
-                summarized_text = passages
-            
-    except IndexError:
-            try:
-                text_to_summarize = chunk_and_preprocess_text(passages, 450)
-                summarized_text = summarize_text(sum_pipe, 
-                                                 text_to_summarize,
-                                                 max_len=max_len,
-                                                 min_len=min_len)
-        
-            except IndexError:
-                text_to_summarize = chunk_and_preprocess_text(passages, 400)
-                summarized_text = summarize_text(sum_pipe, 
-                                                 text_to_summarize,
-                                                 max_len=max_len,
-                                                 min_len=min_len)
-    # text_to_summarize = text_to_summarize.replace('+', '\+')
-    entity_match_html = highlight_entities(text_to_summarize, summarized_text)
-
-    return entity_match_html
-
 def diarize_speaker_whisperX(audio_path, segments):
-    colors = ['red', 'green', 'yellow','blue', 'cyan', 'lime', 'magenta', 'pink', 'orange']
+    colors = ['red', 'green', 'yellow', 'blue',
+              'cyan', 'lime', 'magenta', 'pink', 'orange']
     align_result = align_speaker(segments, audio_path)
     result = assign_speaker(align_result, audio_path)
     trans = []
 
     for seg in result["segments"]:
-        dict_spek  = {}
+        dict_spek = {}
         try:
             dict_spek['text'] = seg['text']
             dict_spek['speaker'] = seg['speaker']
@@ -79,98 +43,135 @@ def diarize_speaker_whisperX(audio_path, segments):
             dict_spek['end'] = seg['end']
         except:
             continue
-        trans.append(dict_spek) 
+        trans.append(dict_spek)
     return trans
+
+
+def main():
+    S3_BUCKETNAME = os.environ['S3_BUCKETNAME']
+    TASK_QUEUE = os.environ['TASK_QUEUE']
+    ERROR_QUEUE = os.environ['ERROR_QUEUE']
+    FINISH_QUEUE = os.environ['FINISH_QUEUE']
     
-if __name__ == "__main__":
-    dbhandler = DBHandler()
     emailsender = Email_Sender()
-    lst_db_tables = dbhandler.list_talbe_db()
-    print('list table = ', lst_db_tables)
-    
-    if 'DONE_QUEUE' not in lst_db_tables:
-        print('creating DONE_QUEUE')
-        dbhandler.create_table('DONE_QUEUE')
-    
-    if 'ERROR_QUEUE' not in lst_db_tables:
-        print("creating ERROR_QUEUE")
-        dbhandler.create_table('ERROR_QUEUE')
-    
-    
-    while(True):
+    s3_handler = S3_Handler(S3_BUCKETNAME)
+    sqs_handler = SQS_Handler()
+
+    while (True):
         # Get task
-        if dbhandler.get_len_table_db() == 0:
-            # print('database is have no task')
+        task_id, audio_path_raw, user, rev_email, task_time, status = sqs_handler.get_message(
+            TASK_QUEUE)
+        
+        if (task_id == None) or (audio_path_raw == None):
             continue
         
         print("GET A TASK...")
-        id_process, task_id, audio_path_raw, user, rev_email, task_time, status = dbhandler.query_db_min('TASK_QUEUE')
-        print(id_process, task_id, audio_path_raw, user, rev_email, task_time, status)
+        # Save file audio into file
+        # Create temp path if need
+        if not os.path.exists(f'./temp/{user}/'):
+           os.mkdir(f'./temp/{user}/') 
+        
+        # Configure response queue
+        json_data = {}
+        json_data["task_id"] = task_id
+        json_data["file_path"] = audio_path_raw
+        json_data["user"] = user
+        json_data["email"] = rev_email
+        json_data["time"] = task_time
+
+        # Create task_id on S3
+        s3_path_task = f'{user}/{task_id}/'
+
+        # Get list user
+        registered_user = s3_handler.list_username_in_bucket()
+        if user not in registered_user:
+            s3_handler.create_s3_folder(f'{user}')
+
+        s3_handler.create_s3_folder(s3_path_task)
         try:
             # Processing task
             # 1. transcribe
             print("TRANSCRIBING...")
-            passages, title, segments, language, running_time, audio_path  = transcribe_audio_whisperX(audio_path_raw, user, task_id)
-                    
-            # Save passges into file, 
-            save_file_text(passages, f'./temp/{user}/{task_id}/passages.txt')
-            save_file_text(title, f'./temp/{user}/{task_id}/title.txt')
-            save_file_json(segments, f'./temp/{user}/{task_id}/segments.json')
+            
+            file_name = os.path.basename(audio_path_raw)
+            local_file_path = f'./temp/{user}/{file_name}'
+            audio_path_s3 = audio_path_raw.replace(f"s3://{S3_BUCKETNAME}/", "")
+            download_flag = s3_handler.download_file_from_s3(audio_path_s3, local_file_path)
+            assert download_flag == True
+        
+            passages, title, segments, language, running_time, audio_path = transcribe_audio_whisperX(
+                local_file_path, user, task_id)
+            
+            # Save passges into file,
+            save_file_text(passages, f'./temp/{user}/passages.txt')
+            s3_handler.upload_file_to_s3(
+                f'./temp/{user}/passages.txt', s3_path_task)
+
+            save_file_text(title, f'./temp/{user}/title.txt')
+            s3_handler.upload_file_to_s3(
+                f'./temp/{user}/title.txt', s3_path_task)
+
+            save_file_json(segments, f'./temp/{user}/segments.json')
+            s3_handler.upload_file_to_s3(
+                f'./temp/{user}/segments.json', s3_path_task)
 
             # 2. sentiment
             print("SENTIMENT...")
             sentiment, sentences = sentimet_audio(passages)
             # print(sentiment, sentences)
-            save_file_json(sentiment, f'./temp/{user}/{task_id}/sentiment.json')
-            save_file_json(sentences, f'./temp/{user}/{task_id}/sentences.json')
+            save_file_json(
+                sentiment, f'./temp/{user}/sentiment.json')
+            s3_handler.upload_file_to_s3(
+                f'./temp/{user}/sentiment.json', s3_path_task)
 
-            # 3. summary
-            # Configure
-            # print("SUMMARIZE...")
-            # config_min_len = 100
-            # config_max_len = 400
-            # summarized_text = summarize_audio(passages, config_min_len, config_max_len)
-            # # Stupid trick
-            # summarized_text = summarized_text.replace('border-radius:', ' color:white; border-radius:')
-            # with open(f'./temp/{user}/{task_id}/summary.html', 'w') as f:
-            #     f.write(summarized_text)
-                
-            # 4. Speaker Identification
+            save_file_json(
+                sentences, f'./temp/{user}/sentences.json')
+            s3_handler.upload_file_to_s3(
+                f'./temp/{user}/sentences.json', s3_path_task)
+
+            # 3. Speaker Identification
             print("DIARIZE...")
             # trans_with_spk = diarize_speaker(audio_path, segments)
             trans_with_spk = diarize_speaker_whisperX(audio_path, segments)
-            save_file_json(trans_with_spk, f'./temp/{user}/{task_id}/matching_speaker.json')
-                            
+            save_file_json(
+                trans_with_spk, f'./temp/{user}/matching_speaker.json')
+            s3_handler.upload_file_to_s3(
+                f'./temp/{user}/matching_speaker.json', s3_path_task)
+
             # Delete task
-            del_flag = dbhandler.delete_task_db(id_process)
-            print(del_flag)
+
             now = datetime.now()
             now_ = now.strftime("%b-%d-%Y-%H-%M-%S")
 
-            if not 'success' in del_flag:
-                # push to queue again
-                status += 1
-                if status > 2:
-                    table_name = 'ERROR_QUEUE'
-                else:
-                    table_name = 'TASK_QUEUE'
-                dbhandler.writeinfo_db(table_name, task_id, audio_path_raw, user, rev_email, now_, status)
-            else: 
-                dbhandler.writeinfo_db('DONE_QUEUE', task_id, audio_path_raw, user, rev_email, now_, 1)
-            task_id_user = task_id + '__' + '-'.join(convert_string_ASCII(user))
+            json_data["status"] = "1"
+
+            message_body = json.dumps(json_data)    
+            sqs_handler.send_message(FINISH_QUEUE, message_body)
+            
+            temp_files = glob(f'./temp/{user}/*')
+            for f in temp_files:
+                os.remove(f)
+            
+            task_id_user = task_id + '__' + \
+                '-'.join(convert_string_ASCII(user))
             emailsender.send_email_text(rev_email, task_id_user)
             print('Sending email with result!')
         except Exception as e:
-            print(e)
+            print('ERROR]____:', e)
             now = datetime.now()
             now_ = now.strftime("%b-%d-%Y-%H-%M-%S")
-            del_flag = dbhandler.delete_task_db(id_process)
+            status = int(status)
             status += 1
             if status > 2:
-                table_name = 'ERROR_QUEUE'
+                url_queue = ERROR_QUEUE
             else:
-                table_name = 'TASK_QUEUE'
-            dbhandler.writeinfo_db(table_name, task_id, audio_path_raw, user, rev_email, now_, status)
-
+                url_queue = TASK_QUEUE
             
+            json_data["time"] = now_
+            json_data["status"] = str(status)
+            message_body = json.dumps(json_data)    
+            sqs_handler.send_message(url_queue, message_body)
 
+
+if __name__ == "__main__":
+    main()
