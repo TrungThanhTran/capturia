@@ -324,10 +324,10 @@ if authentication_status:
                            'color': 'white'})
         if len(df_myfiles) > 0:
             AwesomeTable(df_myfiles, columns=[
+                Column(name='time', label='Time Request'),
                 Column(name='task_id', label='TASK'),
                 Column(name='file_name', label='File Name'),
                 Column(name='title', label='Transcript Title'),
-                Column(name='time', label='Time Request'),
                 Column(name='status', label='Status'),
                 Column(name='result', label='Result', dtype=ColumnDType.LINK)
             ], show_order=True, show_search=True)
