@@ -18,10 +18,6 @@ class S3_Handler():
                 aws_access_key_id=os.environ['AWS_ACCESS_KEY_ID'],
                 aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY']
             )
-        
-        self.bucket_name = bucket_name
-        self.bucket = self.s3_connector.Bucket(bucket_name)
-        
     def list_folders_in_bucket(self):
         
         response = self.s3_client.list_objects_v2(Bucket=self.bucket_name, Delimiter='/')
