@@ -8,20 +8,16 @@ class S3_Handler():
         self.s3_connector = boto3.resource(
                 service_name='s3',
                 region_name='eu-west-2',
-                aws_access_key_id='AKIAZAOFBE65XYMS3YEO',
-                aws_secret_access_key='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'
+                aws_access_key_id=os.environ['AWS_ACCESS_KEY_ID'],
+                aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY']
             )
         
         self.s3_client = boto3.client(
                 service_name='s3',
                 region_name='eu-west-2',
-                aws_access_key_id='AKIAZAOFBE65XYMS3YEO',
-                aws_secret_access_key='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'
+                aws_access_key_id=os.environ['AWS_ACCESS_KEY_ID'],
+                aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY']
             )
-        
-        self.bucket_name = bucket_name
-        self.bucket = self.s3_connector.Bucket(bucket_name)
-        
     def list_folders_in_bucket(self):
         
         response = self.s3_client.list_objects_v2(Bucket=self.bucket_name, Delimiter='/')
@@ -69,8 +65,8 @@ class SQS_Handler():
         self.sqs_client = boto3.client(
                 service_name='sqs',
                 region_name='eu-west-2',
-                aws_access_key_id='AKIAZAOFBE65XYMS3YEO',
-                aws_secret_access_key='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'
+                aws_access_key_id=os.environ['AWS_ACCESS_KEY_ID'],
+                aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY']
             )
         
     def create_queue(self, queue_name, delay_seconds, visiblity_timeout):

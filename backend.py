@@ -48,12 +48,11 @@ def diarize_speaker_whisperX(audio_path, segments):
 
 
 def main():
-    S3_BUCKETNAME = 'takenoteai'
-    TASK_QUEUE = 'Takenote_TaskQueue'
-    ERROR_QUEUE = 'Takenote_ErrorQueue'
-    FINISH_QUEUE = 'Takenote_FinishQueue'
+    S3_BUCKETNAME = os.environ['S3_BUCKETNAME']
+    TASK_QUEUE = os.environ['TASK_QUEUE']
+    ERROR_QUEUE = os.environ['ERROR_QUEUE']
+    FINISH_QUEUE = os.environ['FINISH_QUEUE']
     
-    dbhandler = DBHandler()
     emailsender = Email_Sender()
     s3_handler = S3_Handler(S3_BUCKETNAME)
     sqs_handler = SQS_Handler()
