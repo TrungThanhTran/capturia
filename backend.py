@@ -9,7 +9,13 @@ from glob import glob
 
 
 def sentimet_audio(passage):
-    sentiment, sentences = sentiment_pipe(passage)
+    sent_pipe = load_sentiment_models()
+    print('succesfully load the model')
+    sentiment, sentences = sentiment_pipe(sent_pipe, passage)
+    print('sentiment done!')
+    gc.collect()
+    torch.cuda.empty_cache()
+    del sent_pipe
     return sentiment, sentences
 
 
@@ -20,18 +26,26 @@ def transcribe_audio_whisperX(audio_path, user, task_id):
         asr_model, audio_path, user, task_id)
 
     end_time = time.time()
+    print(f'Transcription time = {end_time - start_time}')
     passages = texts
     gc.collect()
     torch.cuda.empty_cache()
     del asr_model
 
-    return passages, title, segments, language, end_time - start_time, audio_path
+    return passages, segments, title, language, end_time - start_time, audio_path
 
 def diarize_speaker_whisperX(audio_path, segments):
     colors = ['red', 'green', 'yellow', 'blue',
               'cyan', 'lime', 'magenta', 'pink', 'orange']
+    
+    start = time.time()
     align_result = align_speaker(segments, audio_path)
+    print('time to align = ', time.time() - start)
+    start = time.time()
+
     result = assign_speaker(align_result, audio_path)
+    print('time to assign = ', time.time() - start)
+    
     trans = []
 
     for seg in result["segments"]:
@@ -44,6 +58,9 @@ def diarize_speaker_whisperX(audio_path, segments):
         except:
             continue
         trans.append(dict_spek)
+    
+    print('diarization speaker done!')
+
     return trans
 
 
@@ -95,10 +112,14 @@ def main():
             
             file_name = os.path.basename(audio_path_raw)
             local_file_path = f'./temp/{user}/{file_name}'
-            audio_path_s3 = audio_path_raw.replace(f"s3://{S3_BUCKETNAME}/", "")
-            download_flag = s3_handler.download_file_from_s3(audio_path_s3, local_file_path)
+            if "s3" in audio_path_raw:
+                audio_path_s3 = audio_path_raw.replace(f"s3://{S3_BUCKETNAME}/", "")
+                download_flag = s3_handler.download_file_from_s3(audio_path_s3, local_file_path)
+
+            else:
+                local_file_path = audio_path_raw
+                download_flag = True
             assert download_flag == True
-        
             passages, title, segments, language, running_time, audio_path = transcribe_audio_whisperX(
                 local_file_path, user, task_id)
             
