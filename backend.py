@@ -19,31 +19,35 @@ def sentimet_audio(passage):
     return sentiment, sentences
 
 
-def transcribe_audio_whisperX(audio_path, user, task_id):
+def transcribe_audio_whisperX(model_config, audio_path, user, task_id):
     start_time = time.time()
-    asr_model = load_whisperx_model("medium")
-    texts, title, segments, language, audio_path = inference(
-        asr_model, audio_path, user, task_id)
+    asr_model = load_whisperx_model("medium", 
+                                    model_config['transcribe']['device'],
+                                    model_config['transcribe']['compute_type'])
+    
+    # results, "Transcribed Audio", results['segments'], "en", file_path
+    results, title, language, audio_path = inference(
+        asr_model, audio_path, user, task_id, model_config['transcribe']['batch_size'])
 
     end_time = time.time()
     print(f'Transcription time = {end_time - start_time}')
-    passages = texts
+
     gc.collect()
     torch.cuda.empty_cache()
     del asr_model
 
-    return passages, segments, title, language, end_time - start_time, audio_path
+    return results, title, language, end_time - start_time, audio_path
 
-def diarize_speaker_whisperX(audio_path, segments):
+def diarize_speaker_whisperX(audio_path, segments, device, hf_token):
     colors = ['red', 'green', 'yellow', 'blue',
               'cyan', 'lime', 'magenta', 'pink', 'orange']
     
     start = time.time()
-    align_result = align_speaker(segments, audio_path)
+    align_result = align_speaker(segments, audio_path, device)
     print('time to align = ', time.time() - start)
     start = time.time()
 
-    result = assign_speaker(align_result, audio_path)
+    result = assign_speaker(align_result, audio_path, hf_token, device)
     print('time to assign = ', time.time() - start)
     
     trans = []

@@ -33,10 +33,10 @@ import textwrap
 from whisperX import whisperx
 import yaml
 import gc
-from yaml.loader import SafeLoader
 from pydub import AudioSegment
 from yt_dlp import YoutubeDL
 import subprocess
+from numba import cuda
 
 
 from langchain.embeddings import HuggingFaceEmbeddings,HuggingFaceInstructEmbeddings
@@ -50,8 +50,7 @@ from langchain.output_parsers.regex import RegexParser
 nltk.download('punkt')
 
 
-with open('data/model/model_config.yaml') as file:
-    model_config = yaml.load(file, Loader=SafeLoader)
+
 
 OPEN_AI_KEY = os.environ.get('OPEN_AI_KEY')
 time_str = time.strftime("%d%m%Y-%H%M%S")
@@ -141,12 +140,12 @@ def load_sentiment_models():
                          tokenizer=q_tokenizer)
     return sent_pipe
 
-def load_whisperx_model(asr_model_name):
+def load_whisperx_model(asr_model_name, device, compute_type):
     model = whisperx.load_model(
         asr_model_name,  
-        model_config['transcribe']['device'], 
+        device, 
         language='en', 
-        compute_type= model_config['transcribe']['compute_type'])
+        compute_type= compute_type)
     return model
 
 def load_fast_asr_model(asr_model_name):
@@ -445,12 +444,16 @@ def matching_tran_seg(segs, tran):
         new_segs.append(seg)
     return new_segs
 
+def clear_gpu():
+    cuda.select_device(0) # choosing second GPU 
+    cuda.close()
+
 # OFF function
-def transcribe_audio(_asr_model, audio_file):
+def transcribe_audio(_asr_model, audio_file, batch_size):
     results = {}
     audio = whisperx.load_audio(audio_file)
     result = _asr_model.transcribe(
-        audio, batch_size=model_config['transcribe']['batch_size'])
+        audio, batch_size=batch_size)
     # segments = json.dumps(result["segments"], indent=4)
     results['text'] = ' '.join([clean_text(segment['text'], 'en')
                                for segment in result['segments']])
@@ -468,31 +471,37 @@ def transcribe_audio(_asr_model, audio_file):
             temp_dict['end'] = seg['end']
             clean_segments.append(temp_dict)
     results['segments'] = clean_segments
+    
+    gc.collect()
+    del _asr_model
+    del result, audio
+    torch.cuda.empty_cache()
+
     return results
 
 
-def align_speaker(segments, audio_file):
+def align_speaker(segments, audio_file, device):
     audio = whisperx.load_audio(audio_file)
     model_a, metadata = whisperx.load_align_model(language_code="en",
-                                                  device=model_config['transcribe']['device'])
+                                                  device=device)
 
     result = whisperx.align(segments,
                             model_a,
                             metadata,
                             audio,
-                            model_config['transcribe']['device'],
+                            device,
                             return_char_alignments=False)
     
     gc.collect(); 
     torch.cuda.empty_cache(); 
-    del model_a
+    del model_a, metadata
     return result
 
-def assign_speaker(align_result, audio_file):
+def assign_speaker(align_result, audio_file, hf_token, device):
     start = time.time()
     diarize_model = whisperx.DiarizationPipeline(
-            use_auth_token=model_config['transcribe']['hf_token'],
-            device=model_config['transcribe']['device'])
+            use_auth_token=hf_token,
+            device=device)
     try:
         audio_file_wav = audio_file
         diarize_segments = diarize_model(audio_file_wav)
@@ -517,7 +526,7 @@ def assign_speaker(align_result, audio_file):
 # OFF function
 
 
-def inference(_asr_model, file_path, user, task_id):
+def inference(_asr_model, file_path, user, task_id, batch_size):
     if ('./temp/' not in file_path) or ('http' in file_path) or ('.com' in file_path):  # Download file from link
         if validators.url(file_path):
             if 'vimeo' in file_path:
@@ -530,8 +539,8 @@ def inference(_asr_model, file_path, user, task_id):
             if os.path.exists(url_file_mp3):
                 file_path = url_file_mp3
 
-    results = transcribe_audio(_asr_model, file_path)
-    return results['text'], "Transcribed Audio", results['segments'], "en", file_path
+    results = transcribe_audio(_asr_model, file_path, batch_size)
+    return results, "Transcribed Audio", "en", file_path
 
 # @st.experimental_memo(suppress_st_warning=True)
 def sentiment_pipe(sent_pipe, audio_text):
