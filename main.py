@@ -1,31 +1,47 @@
 import os
+import uuid
 import json
 import torch
-from flask import Flask, request
-from flask_cors import CORS
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
 import yaml
 from yaml.loader import SafeLoader
 
 from database_aws import S3_Handler, SQS_Handler
 from backend import diarize_speaker_whisperX, transcribe_audio_whisperX, sentimet_audio
 from functions import save_file_text, save_file_json, clear_gpu
+from pydantic import BaseModel
 
-app = Flask(__name__)
-CORS(app)
+class Item(BaseModel):
+    file_name: str
+
+app = FastAPI()
+origins = ['*']
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 S3_BUCKETNAME = os.environ['S3_BUCKETNAME']
 s3_handler = S3_Handler(S3_BUCKETNAME)
 
-@app.route('/')
-def add_index():
+@app.get('/')
+async def add_index():
 	return 'This is an API for Takenote.AI'
 
-@app.route('/helloworld')
+@app.get('/helloworld')
 def hello_world():
 	return 'This is an API for Takenote.AI'
 
-@app.route(f"/api/v1/transcribe/file", methods=['POST', 'GET'])
-def api_v1_transcribe_file():    
-    # Init
+@app.post("/api/v1/transcribe/file")
+def api_v1_transcribe_file(item: Item):
+        print('item = ', item)
+        import uuid    
         with open('data/model/model_config.yaml') as file:
             model_config = yaml.load(file, Loader=SafeLoader)
             
@@ -35,22 +51,22 @@ def api_v1_transcribe_file():
             "sentiment": [],
             "speaker_diarization": []
         }
+        
+        random_uuid = uuid.uuid4()
+        print("Random UUID (Version 4):", random_uuid)
        
-    # try:
         ### Get data from json
-        print('doing this = ', request.get_json())
-        request_data = request.get_json()
-        audio_path_raw = request_data['file_name']
+        print('doing this = ', item.file_name)
+        audio_path_raw = item.file_name
         dict_reponse["file_name"] = audio_path_raw
-
+        uuid = ""
         ### Download data 
-        local_file_path = f'./temp/{audio_path_raw}'
+        local_file_path = f'./temp/{random_uuid}_{audio_path_raw}'
         download_flag = s3_handler.download_file_from_s3(audio_path_raw, local_file_path)
         
         assert download_flag == True
         
         ### Transcribe 
-        # results, title, language, end_time - start_time, audio_path
         results, _, _, _, audio_path = transcribe_audio_whisperX(model_config,
                 local_file_path, 'test', "1234")
         passages = results["text"]
@@ -81,17 +97,12 @@ def api_v1_transcribe_file():
         dict_reponse["speaker_diarization"] = trans_with_spk
         os.remove(local_file_path)
         del segments, passages, results, sentences
-        # torch.cuda.reset()
-        # clear_gpu()
 
-    # except Exception as e:
-    #     return {
-    #         "error": e
-    #     }
         return dict_reponse
+        raise HTTPException(status_code=404, detail=f"Could process the file: {file_name}")
 
 
 if __name__ == '__main__':
-    print('Start running flask app')
-    app.config['JSON_AS_ASCII'] = False
-    app.run(host='0.0.0.0', debug=False, port=8000, threaded=False)
+    print('Start running fastapi app')
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

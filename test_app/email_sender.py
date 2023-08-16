@@ -270,7 +270,7 @@ class Email_Sender():
             smtp.login(self.email_sender, self.email_password)
             smtp.sendmail(self.email_sender, email_receiver, msg.as_string())
     
-        def send_email_text(self,
+    def send_email_text(self,
                         email_receiver,
                         notify_text,
                         content='This is a plain text body.',

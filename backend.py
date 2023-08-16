@@ -20,6 +20,7 @@ def sentimet_audio(passage):
 
 
 def transcribe_audio_whisperX(model_config, audio_path, user, task_id):
+    print('Start transcribing audio file...')
     start_time = time.time()
     asr_model = load_whisperx_model("medium", 
                                     model_config['transcribe']['device'],
