@@ -307,8 +307,18 @@ def clean_text(text):
     text = text.replace(" ", "_")
     return text
 
+def get_file_size_in_kb(file_path):
+    if os.path.exists(file_path):
+        file_size_bytes = os.path.getsize(file_path)
+        file_size_kb = file_size_bytes / 1024
+        return int(file_size_kb)
+    else:
+        return 0  # Return None if the file doesn't exist
+
 # OFF function
-def download_from_youtube(url, user_name, task_id):
+def download_from_youtube(url, task_id, user_name="youtube_down"):
+    if not os.path.exists(f'temp/{user_name}/{task_id}'):
+        os.mkdir(f'temp/{user_name}/{task_id}')
     try:
         yt = YouTube(url, use_oauth=True, allow_oauth_cache=True)
         yt.streams \
@@ -357,7 +367,7 @@ def download_from_youtube(url, user_name, task_id):
     
         audio_file_path = f"temp/{user_name}/{task_id}/{clean_text(title)}.mp3"
         audio_file_path_wav = f"temp/{user_name}/{task_id}/{clean_text(title)}.wav"
-        MP3ToWAC(audio_file_path, audio_file_path_wav)
+        MP3ToWAC(audio_file_path, "audio_file_path_wav")
 
     return audio_file_path, audio_file_path_wav, title
 
@@ -527,18 +537,6 @@ def assign_speaker(align_result, audio_file, hf_token, device):
 
 
 def inference(_asr_model, file_path, user, task_id, batch_size):
-    if ('./temp/' not in file_path) or ('http' in file_path) or ('.com' in file_path):  # Download file from link
-        if validators.url(file_path):
-            if 'vimeo' in file_path:
-                url_file_mp3, url_file_wav, title = download_from_vimeo(
-                    file_path, user, task_id)
-            else:
-                url_file_mp3, url_file_wav, title = download_from_youtube(
-                    file_path, user, task_id)
-
-            if os.path.exists(url_file_mp3):
-                file_path = url_file_mp3
-
     results = transcribe_audio(_asr_model, file_path, batch_size)
     return results, "Transcribed Audio", "en", file_path
 

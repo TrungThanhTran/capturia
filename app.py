@@ -6,9 +6,9 @@ from flask_cors import CORS
 import yaml
 from yaml.loader import SafeLoader
 
-from database_aws import S3_Handler, SQS_Handler
+from database_aws import S3_Handler
 from backend import diarize_speaker_whisperX, transcribe_audio_whisperX, sentimet_audio
-from functions import save_file_text, save_file_json, clear_gpu
+from functions import save_file_text, save_file_json, download_from_youtube
 
 app = Flask(__name__)
 CORS(app)

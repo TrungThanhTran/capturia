@@ -15,10 +15,10 @@ def _call_json_api(api_url, json_data):
         return response.json()
 
 json_data = {
-    "file_name":"QLGvdPvxSemj4UzbJNQs_speed_talking.wav"
+    "file_name":"audio.wav"
     }
 
-api_url = "https://capturia.io/api/v1/transcribe/file"
+api_url = "http://18.132.47.192/api/v1/transcribe/file"
 
 response = _call_json_api(api_url, json_data)
 print(response)

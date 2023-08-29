@@ -1,5 +1,5 @@
 transcribe:
   device: cuda
-  batch_size: 48
+  batch_size: 32
   compute_type: float16
   hf_token: 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
