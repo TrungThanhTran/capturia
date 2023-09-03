@@ -66,8 +66,8 @@ def api_v1_download_video(ytlink: YTLINK):
         response_dict['mimetype'] = 'audio/mp3'
         response_dict['filename'] = raw_audio_name
         response_dict['size'] = file_size
-        response_dict['key'] = audio_file_name
-        response_dict['handle'] = task_id
+        response_dict['key'] = task_id
+        response_dict['handle'] = audio_file_name
         shutil.rmtree(f'temp/youtube_down/{task_id}')
     
         return response_dict
