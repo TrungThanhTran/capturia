@@ -53,7 +53,7 @@ def api_v1_download_video(ytlink: YTLINK):
         link = ytlink.link
         task_id = ytlink.task
         
-        audio_file_path, audio_file_path_wav, title = download_from_youtube(link, task_id)
+        audio_file_path, audio_file_path_wav, title, raw_audio_name = download_from_youtube(link, task_id)
         file_size = get_file_size_in_kb(audio_file_path)
         # Uploading to S3
         audio_file_name = audio_file_path.split('/')[-1]
@@ -63,10 +63,11 @@ def api_v1_download_video(ytlink: YTLINK):
         response_dict = {}
 
         response_dict['bucket'] = S3_BUCKETNAME
-        response_dict['mimetype'] = 'audio'
-        response_dict['audio_path'] = audio_file_name
+        response_dict['mimetype'] = 'audio/mp3'
+        response_dict['filename'] = raw_audio_name
         response_dict['size'] = file_size
-        response_dict['key'] = task_id
+        response_dict['key'] = audio_file_name
+        response_dict['handle'] = task_id
         shutil.rmtree(f'temp/youtube_down/{task_id}')
     
         return response_dict

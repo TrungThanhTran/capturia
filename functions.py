@@ -310,15 +310,21 @@ def clean_text(text):
 def get_file_size_in_kb(file_path):
     if os.path.exists(file_path):
         file_size_bytes = os.path.getsize(file_path)
-        file_size_kb = file_size_bytes / 1024
-        return int(file_size_kb)
+        # file_size_kb = file_size_bytes / 1024
+        return int(file_size_bytes)
     else:
         return 0  # Return None if the file doesn't exist
 
 # OFF function
 def download_from_youtube(url, task_id, user_name="youtube_down"):
+    if not os.path.exists(f'temp/{user_name}'):
+        print('succesful creating user_name')
+        os.mkdir(f'temp/{user_name}')
+        
     if not os.path.exists(f'temp/{user_name}/{task_id}'):
+        print('succesful creating task_id')
         os.mkdir(f'temp/{user_name}/{task_id}')
+    raw_audio_name = "audio"    
     try:
         yt = YouTube(url, use_oauth=True, allow_oauth_cache=True)
         yt.streams \
@@ -328,13 +334,13 @@ def download_from_youtube(url, task_id, user_name="youtube_down"):
             .first() \
             .download(f"temp/{user_name}/{task_id}")
         title = yt.title
-        
+        raw_audio_name = clean_text(title)
         video_file_path = glob(f"temp/{user_name}/{task_id}/*.mp4")[0]
         if os.path.exists(video_file_path):
-            audio_file_path = f"temp/{user_name}/{task_id}/{clean_text(title)}.mp3"
+            audio_file_path = f"temp/{user_name}/{task_id}/{task_id}_{raw_audio_name}.mp3"
             MP4ToMP3(video_file_path, audio_file_path)
 
-            audio_file_path_wav = f"temp/{user_name}/{task_id}/{clean_text(title)}.wav"
+            audio_file_path_wav = f"temp/{user_name}/{task_id}/{task_id}_{raw_audio_name}.wav"
             MP4ToMP3(video_file_path, audio_file_path_wav)
 
             if os.path.exists(audio_file_path):
@@ -345,7 +351,7 @@ def download_from_youtube(url, task_id, user_name="youtube_down"):
             #   print(info_dict)
             title = info_dict.get('title', None)
             title = title.replace(" ","_")
-        
+        raw_audio_name = clean_text(title)
         ydl_opts = {
             'format': 'bestaudio/best',
             'postprocessors': [{
@@ -355,7 +361,7 @@ def download_from_youtube(url, task_id, user_name="youtube_down"):
             }],
             'logger': MyLogger(),
             'progress_hooks': [my_hook],
-            'outtmpl': f'temp/{user_name}/{task_id}/{clean_text(title)}'
+            'outtmpl': f'temp/{user_name}/{task_id}/{task_id}_{raw_audio_name}'
         }
         with YoutubeDL(ydl_opts) as ydl:
             ydl.download(url)
@@ -365,11 +371,11 @@ def download_from_youtube(url, task_id, user_name="youtube_down"):
         #                      stdout=subprocess.PIPE, shell=True)
         # p.wait()
     
-        audio_file_path = f"temp/{user_name}/{task_id}/{clean_text(title)}.mp3"
-        audio_file_path_wav = f"temp/{user_name}/{task_id}/{clean_text(title)}.wav"
+        audio_file_path = f"temp/{user_name}/{task_id}/{task_id}_{raw_audio_name}.mp3"
+        audio_file_path_wav = f"temp/{user_name}/{task_id}/{task_id}_{raw_audio_name}.wav"
         MP3ToWAC(audio_file_path, "audio_file_path_wav")
 
-    return audio_file_path, audio_file_path_wav, title
+    return audio_file_path, audio_file_path_wav, title, raw_audio_name
 
 
 # OFF function
@@ -382,10 +388,10 @@ def download_from_vimeo(url, user_name, task_id):
     low_stream.download(download_directory=f'temp/{user_name}/{task_id}',
                         filename='vimeo.mp4')
     video_file_path = glob(f"temp/{user_name}/{task_id}/*.mp4")[0]
-    audio_file_path = f"temp/{user_name}/{task_id}/{clean_text(vmeta.title)}.mp3"
+    audio_file_path = f"temp/{user_name}/{task_id}/{task_id}_{clean_text(vmeta.title)}.mp3"
 
     MP4ToMP3(video_file_path, audio_file_path)
-    audio_file_path_wav = f"temp/{user_name}/{task_id}/{clean_text(vmeta.title)}.wav"
+    audio_file_path_wav = f"temp/{user_name}/{task_id}/{task_id}_{clean_text(vmeta.title)}.wav"
     if os.path.exists(audio_file_path):
         os.remove(video_file_path)
     MP4ToMP3(video_file_path, audio_file_path_wav)
