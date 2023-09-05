@@ -6,13 +6,14 @@ from datetime import datetime
 import json
 import gc
 from glob import glob
+from logger import log_api_error, log_api_result
 
 
 def sentimet_audio(passage):
     sent_pipe = load_sentiment_models()
-    print('succesfully load the model')
+    log_api_result('succesfully load the model')
     sentiment, sentences = sentiment_pipe(sent_pipe, passage)
-    print('sentiment done!')
+    log_api_result('sentiment done!')
     gc.collect()
     torch.cuda.empty_cache()
     del sent_pipe
@@ -20,7 +21,7 @@ def sentimet_audio(passage):
 
 
 def transcribe_audio_whisperX(model_config, audio_path, user, task_id):
-    print('Start transcribing audio file...')
+    log_api_result('Start transcribing audio file...')
     start_time = time.time()
     asr_model = load_whisperx_model("medium", 
                                     model_config['transcribe']['device'],
@@ -31,7 +32,7 @@ def transcribe_audio_whisperX(model_config, audio_path, user, task_id):
         asr_model, audio_path, user, task_id, model_config['transcribe']['batch_size'])
 
     end_time = time.time()
-    print(f'Transcription time = {end_time - start_time}')
+    log_api_result(f'Transcription time = {end_time - start_time}')
 
     gc.collect()
     torch.cuda.empty_cache()
@@ -45,11 +46,11 @@ def diarize_speaker_whisperX(audio_path, segments, device, hf_token):
     
     start = time.time()
     align_result = align_speaker(segments, audio_path, device)
-    print('time to align = ', time.time() - start)
+    log_api_result(f"time to align = {time.time() - start} seconds")
     start = time.time()
 
     result = assign_speaker(align_result, audio_path, hf_token, device)
-    print('time to assign = ', time.time() - start)
+    log_api_result(f"time to assign = {time.time() - start} seconds")
     
     trans = []
 
@@ -64,7 +65,7 @@ def diarize_speaker_whisperX(audio_path, segments, device, hf_token):
             continue
         trans.append(dict_spek)
     
-    print('diarization speaker done!')
+    log_api_result('diarization speaker done!')
 
     return trans
 

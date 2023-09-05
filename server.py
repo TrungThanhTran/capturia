@@ -10,7 +10,7 @@ import shutil
 import gc
 import yaml
 from yaml.loader import SafeLoader
-
+from logger import log_api_error, log_api_result
 from database_aws import S3_Handler, SQS_Handler 
 from backend import diarize_speaker_whisperX, transcribe_audio_whisperX, sentimet_audio
 from functions import save_file_text, save_file_json, download_from_youtube, get_file_size_in_kb
@@ -49,7 +49,7 @@ def hello_world():
 @app.post(f"/api/v1/download/video")
 def api_v1_download_video(ytlink: YTLINK):
     try:
-        print('api v1 downloading this = ', ytlink)
+        log_api_result(f'api v1 downloading this = {ytlink}')
         link = ytlink.link
         task_id = ytlink.task
         
@@ -72,6 +72,7 @@ def api_v1_download_video(ytlink: YTLINK):
     
         return response_dict
     except Exception as e:
+        log_api_error(e)
         print(e)
         return JSONResponse(content={'detail': "Could not download the link"}, status_code=404)
 
@@ -79,7 +80,7 @@ def api_v1_download_video(ytlink: YTLINK):
 @app.post("/api/v1/transcribe/file")
 def api_v1_transcribe_file(item: Item):
     try:
-        print('item = ', item)
+        log_api_result(item)
         import uuid    
         with open('data/model/model_config.yaml') as file:
             model_config = yaml.load(file, Loader=SafeLoader)
@@ -92,10 +93,9 @@ def api_v1_transcribe_file(item: Item):
         }
         
         random_uuid = uuid.uuid4()
-        print("Random UUID (Version 4):", random_uuid)
+        log_api_result(f"Random UUID (Version 4): {random_uuid}")
        
         ### Get data from json
-        print('doing this = ', item.file_name)
         audio_path_raw = item.file_name
         dict_reponse["file_name"] = audio_path_raw
         uuid = ""
@@ -126,6 +126,7 @@ def api_v1_transcribe_file(item: Item):
                                                         model_config['transcribe']['device'], 
                                                         model_config['transcribe']['hf_token'])
         except Exception as e:
+            log_api_error(e)
             print(e)
             trans_with_spk = []
             
