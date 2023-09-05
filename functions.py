@@ -8,8 +8,7 @@ import plotly_express as px
 import nltk
 import plotly.graph_objects as go
 from optimum.onnxruntime import ORTModelForSequenceClassification
-from transformers import pipeline, AutoTokenizer, AutoModelForTokenClassification, AutoModelForSeq2SeqLM
-from sentence_transformers import SentenceTransformer, CrossEncoder
+from transformers import pipeline, AutoTokenizer
 import streamlit as st
 import en_core_web_lg
 import validators
@@ -34,10 +33,10 @@ import textwrap
 from whisperX import whisperx
 import yaml
 import gc
-from yaml.loader import SafeLoader
 from pydub import AudioSegment
 from yt_dlp import YoutubeDL
 import subprocess
+from numba import cuda
 
 
 from langchain.embeddings import HuggingFaceEmbeddings,HuggingFaceInstructEmbeddings
@@ -51,8 +50,7 @@ from langchain.output_parsers.regex import RegexParser
 nltk.download('punkt')
 
 
-with open('data/model/model_config.yaml') as file:
-    model_config = yaml.load(file, Loader=SafeLoader)
+
 
 OPEN_AI_KEY = os.environ.get('OPEN_AI_KEY')
 time_str = time.strftime("%d%m%Y-%H%M%S")
@@ -131,67 +129,35 @@ def my_hook(d):
         print('Done downloading, now converting ...')
         
 # @st.experimental_singleton(suppress_st_warning=True)
-def load_models():
+def load_sentiment_models():
     '''Load and cache all the models to be used'''
     q_model = ORTModelForSequenceClassification.from_pretrained(
         "nickmuchi/quantized-optimum-finbert-tone")
     q_tokenizer = AutoTokenizer.from_pretrained(
         "nickmuchi/quantized-optimum-finbert-tone")
     sent_pipe = pipeline("text-classification",
-                         model=q_model, tokenizer=q_tokenizer)
-    
-    ner_model = None #AutoModelForTokenClassification.from_pretrained(
-        # "xlm-roberta-large-finetuned-conll03-english")
-    ner_tokenizer =  None #AutoTokenizer.from_pretrained(
-        # "xlm-roberta-large-finetuned-conll03-english")
-    ner_pipe = None #pipeline("ner", model=ner_model,
-                #    tokenizer=ner_tokenizer, grouped_entities=True)
-    # AutoModelForSeq2SeqLM.from_pretrained("Babelscape/rebel-large")
-    kg_model = None
-    # AutoTokenizer.from_pretrained("Babelscape/rebel-large")
-    kg_tokenizer = None
+                         model=q_model, 
+                         tokenizer=q_tokenizer)
+    return sent_pipe
 
-
-    # AutoTokenizer.from_pretrained('google/flan-t5-xl') # Semantic Search
-    emb_tokenizer = None
-    
-    sum_pipe = None #pipeline("summarization", model="facebook/bart-large-cnn",
-                        #tokenizer="facebook/bart-large-cnn", clean_up_tokenization_spaces=True)
-
-    # CrossEncoder('cross-encoder/mmarco-mMiniLMv2-L12-H384-v1') #cross-encoder/ms-marco-MiniLM-L-12-v2
-    cross_encoder = None
-    sbert = None #SentenceTransformer('all-MiniLM-L6-v2')
-
-    return sent_pipe, sum_pipe, ner_pipe, cross_encoder, kg_model, kg_tokenizer, emb_tokenizer, sbert
-
-@st.experimental_singleton(suppress_st_warning=True)
-def load_asr_model(asr_model_name):
-    asr_model = whisper.load_model(asr_model_name)
-    return asr_model
-
-@st.experimental_singleton(suppress_st_warning=True)
-def load_whisperx_model(asr_model_name):
+def load_whisperx_model(asr_model_name, device, compute_type):
     model = whisperx.load_model(
         asr_model_name,  
-        model_config['transcribe']['device'], 
+        device, 
         language='en', 
-        compute_type= model_config['transcribe']['compute_type'])
+        compute_type= compute_type)
     return model
 
-@st.experimental_singleton(suppress_st_warning=True)
 def load_fast_asr_model(asr_model_name):
     asr_model = WhisperModel(
         asr_model_name, device="cpu", compute_type="float32")
     return asr_model
-
-# OFF function
 
 
 def load_si_model(si_model_name):
     feature_extractor = AutoFeatureExtractor.from_pretrained(si_model_name)
     model = AutoModelForAudioXVector.from_pretrained(si_model_name)
     return model, feature_extractor
-
 
 def delete_model(model):
     del model
@@ -325,13 +291,6 @@ def embed_text(query, title, embedding_model, _emb_tok, _docsearch, chain_type="
     return answer
 
 # OFF function
-
-
-def get_spacy():
-    nlp = en_core_web_lg.load()
-    return nlp
-
-# OFF function
 def MP4ToMP3(path_to_mp4, path_to_mp3):
     FILETOCONVERT = AudioFileClip(path_to_mp4)
     FILETOCONVERT.write_audiofile(path_to_mp3)
@@ -348,8 +307,24 @@ def clean_text(text):
     text = text.replace(" ", "_")
     return text
 
+def get_file_size_in_kb(file_path):
+    if os.path.exists(file_path):
+        file_size_bytes = os.path.getsize(file_path)
+        # file_size_kb = file_size_bytes / 1024
+        return int(file_size_bytes)
+    else:
+        return 0  # Return None if the file doesn't exist
+
 # OFF function
-def download_from_youtube(url, user_name, task_id):
+def download_from_youtube(url, task_id, user_name="youtube_down"):
+    if not os.path.exists(f'temp/{user_name}'):
+        print('succesful creating user_name')
+        os.mkdir(f'temp/{user_name}')
+        
+    if not os.path.exists(f'temp/{user_name}/{task_id}'):
+        print('succesful creating task_id')
+        os.mkdir(f'temp/{user_name}/{task_id}')
+    raw_audio_name = "audio"    
     try:
         yt = YouTube(url, use_oauth=True, allow_oauth_cache=True)
         yt.streams \
@@ -359,13 +334,13 @@ def download_from_youtube(url, user_name, task_id):
             .first() \
             .download(f"temp/{user_name}/{task_id}")
         title = yt.title
-        
+        raw_audio_name = clean_text(title)
         video_file_path = glob(f"temp/{user_name}/{task_id}/*.mp4")[0]
         if os.path.exists(video_file_path):
-            audio_file_path = f"temp/{user_name}/{task_id}/{clean_text(title)}.mp3"
+            audio_file_path = f"temp/{user_name}/{task_id}/{task_id}_{raw_audio_name}.mp3"
             MP4ToMP3(video_file_path, audio_file_path)
 
-            audio_file_path_wav = f"temp/{user_name}/{task_id}/{clean_text(title)}.wav"
+            audio_file_path_wav = f"temp/{user_name}/{task_id}/{task_id}_{raw_audio_name}.wav"
             MP4ToMP3(video_file_path, audio_file_path_wav)
 
             if os.path.exists(audio_file_path):
@@ -376,7 +351,7 @@ def download_from_youtube(url, user_name, task_id):
             #   print(info_dict)
             title = info_dict.get('title', None)
             title = title.replace(" ","_")
-        
+        raw_audio_name = clean_text(title)
         ydl_opts = {
             'format': 'bestaudio/best',
             'postprocessors': [{
@@ -386,7 +361,7 @@ def download_from_youtube(url, user_name, task_id):
             }],
             'logger': MyLogger(),
             'progress_hooks': [my_hook],
-            'outtmpl': f'temp/{user_name}/{task_id}/{clean_text(title)}'
+            'outtmpl': f'temp/{user_name}/{task_id}/{task_id}_{raw_audio_name}'
         }
         with YoutubeDL(ydl_opts) as ydl:
             ydl.download(url)
@@ -396,11 +371,11 @@ def download_from_youtube(url, user_name, task_id):
         #                      stdout=subprocess.PIPE, shell=True)
         # p.wait()
     
-        audio_file_path = f"temp/{user_name}/{task_id}/{clean_text(title)}.mp3"
-        audio_file_path_wav = f"temp/{user_name}/{task_id}/{clean_text(title)}.wav"
-        MP3ToWAC(audio_file_path, audio_file_path_wav)
+        audio_file_path = f"temp/{user_name}/{task_id}/{task_id}_{raw_audio_name}.mp3"
+        audio_file_path_wav = f"temp/{user_name}/{task_id}/{task_id}_{raw_audio_name}.wav"
+        MP3ToWAC(audio_file_path, "audio_file_path_wav")
 
-    return audio_file_path, audio_file_path_wav, title
+    return audio_file_path, audio_file_path_wav, title, raw_audio_name
 
 
 # OFF function
@@ -413,10 +388,10 @@ def download_from_vimeo(url, user_name, task_id):
     low_stream.download(download_directory=f'temp/{user_name}/{task_id}',
                         filename='vimeo.mp4')
     video_file_path = glob(f"temp/{user_name}/{task_id}/*.mp4")[0]
-    audio_file_path = f"temp/{user_name}/{task_id}/{clean_text(vmeta.title)}.mp3"
+    audio_file_path = f"temp/{user_name}/{task_id}/{task_id}_{clean_text(vmeta.title)}.mp3"
 
     MP4ToMP3(video_file_path, audio_file_path)
-    audio_file_path_wav = f"temp/{user_name}/{task_id}/{clean_text(vmeta.title)}.wav"
+    audio_file_path_wav = f"temp/{user_name}/{task_id}/{task_id}_{clean_text(vmeta.title)}.wav"
     if os.path.exists(audio_file_path):
         os.remove(video_file_path)
     MP4ToMP3(video_file_path, audio_file_path_wav)
@@ -485,12 +460,16 @@ def matching_tran_seg(segs, tran):
         new_segs.append(seg)
     return new_segs
 
+def clear_gpu():
+    cuda.select_device(0) # choosing second GPU 
+    cuda.close()
+
 # OFF function
-def transcribe_audio(_asr_model, audio_file):
+def transcribe_audio(_asr_model, audio_file, batch_size):
     results = {}
     audio = whisperx.load_audio(audio_file)
     result = _asr_model.transcribe(
-        audio, batch_size=model_config['transcribe']['batch_size'])
+        audio, batch_size=batch_size)
     # segments = json.dumps(result["segments"], indent=4)
     results['text'] = ' '.join([clean_text(segment['text'], 'en')
                                for segment in result['segments']])
@@ -508,40 +487,53 @@ def transcribe_audio(_asr_model, audio_file):
             temp_dict['end'] = seg['end']
             clean_segments.append(temp_dict)
     results['segments'] = clean_segments
+    
+    gc.collect()
+    del _asr_model
+    del result, audio
+    torch.cuda.empty_cache()
+
     return results
 
 
-def align_speaker(segments, audio_file):
+def align_speaker(segments, audio_file, device):
     audio = whisperx.load_audio(audio_file)
     model_a, metadata = whisperx.load_align_model(language_code="en",
-                                                  device=model_config['transcribe']['device'])
+                                                  device=device)
 
     result = whisperx.align(segments,
                             model_a,
                             metadata,
                             audio,
-                            model_config['transcribe']['device'],
+                            device,
                             return_char_alignments=False)
     
     gc.collect(); 
     torch.cuda.empty_cache(); 
-    del model_a
+    del model_a, metadata
     return result
 
-def assign_speaker(align_result, audio_file):
+def assign_speaker(align_result, audio_file, hf_token, device):
+    start = time.time()
     diarize_model = whisperx.DiarizationPipeline(
-            use_auth_token=model_config['transcribe']['hf_token'],
-            device=model_config['transcribe']['device'])
+            use_auth_token=hf_token,
+            device=device)
     try:
         audio_file_wav = audio_file
         diarize_segments = diarize_model(audio_file_wav)
+        print('assign 1 = ', time.time() - start)
     except Exception as e:                
         # convert mp3 file to wav filetr
         sound = AudioSegment.from_file(audio_file)
         sound.export(audio_file_wav, format="wav")
         diarize_segments = diarize_model(audio_file_wav)
+        print('assign 1 = ', time.time() - start)
 
+    
+    start = time.time()
     result = whisperx.assign_word_speakers(diarize_segments, align_result)
+    print('assign 2 = ', time.time() - start)
+
     gc.collect()
     torch.cuda.empty_cache()
     del diarize_model
@@ -550,24 +542,12 @@ def assign_speaker(align_result, audio_file):
 # OFF function
 
 
-def inference(_asr_model, file_path, user, task_id):
-    if ('./temp/' not in file_path) or ('http' in file_path) or ('.com' in file_path):  # Download file from link
-        if validators.url(file_path):
-            if 'vimeo' in file_path:
-                url_file_mp3, url_file_wav, title = download_from_vimeo(
-                    file_path, user, task_id)
-            else:
-                url_file_mp3, url_file_wav, title = download_from_youtube(
-                    file_path, user, task_id)
-
-            if os.path.exists(url_file_mp3):
-                file_path = url_file_mp3
-
-    results = transcribe_audio(_asr_model, file_path)
-    return results['text'], "Transcribed Audio", results['segments'], "en", file_path
+def inference(_asr_model, file_path, user, task_id, batch_size):
+    results = transcribe_audio(_asr_model, file_path, batch_size)
+    return results, "Transcribed Audio", "en", file_path
 
 # @st.experimental_memo(suppress_st_warning=True)
-def sentiment_pipe(audio_text):
+def sentiment_pipe(sent_pipe, audio_text):
     '''Determine the sentiment of the text'''
 
     audio_sentences = chunk_long_text(audio_text, 50, 1, 1)
@@ -651,120 +631,9 @@ def transcript_downloader(raw_text, text_button, header="_", user_name="admin"):
                 f.write(raw_text)
         except Exception as e:
             print(str(e))
-    st.markdown(f"#### {text_button} ###")
-    href = f'<a href="data:file/txt;base64,{b64.decode()}" download="{new_filename}">Click to Download!!</a>'
-    st.markdown(href, unsafe_allow_html=True)
-
-# @st.experimental_memo(suppress_st_warning=True)
-def get_all_entities_per_sentence(text):
-    doc = nlp(''.join(text))
-
-    sentences = list(doc.sents)
-
-    entities_all_sentences = []
-    for sentence in sentences:
-        entities_this_sentence = []
-
-        # SPACY ENTITIES
-        for entity in sentence.ents:
-            entities_this_sentence.append(str(entity))
-
-        # XLM ENTITIES
-        entities_xlm = [entity["word"] for entity in ner_pipe(str(sentence))]
-        for entity in entities_xlm:
-            entities_this_sentence.append(str(entity))
-
-        entities_all_sentences.append(entities_this_sentence)
-
-    return entities_all_sentences
-
-# @st.experimental_memo(suppress_st_warning=True)
-def get_all_entities(text):
-    all_entities_per_sentence = get_all_entities_per_sentence(text)
-    return list(itertools.chain.from_iterable(all_entities_per_sentence))
-
-# @st.experimental_memo(suppress_st_warning=True)
-
-
-def get_and_compare_entities(article_content, summary_output):
-
-    all_entities_per_sentence = get_all_entities_per_sentence(article_content)
-    entities_article = list(
-        itertools.chain.from_iterable(all_entities_per_sentence))
-
-    all_entities_per_sentence = get_all_entities_per_sentence(summary_output)
-    entities_summary = list(
-        itertools.chain.from_iterable(all_entities_per_sentence))
-
-    matched_entities = []
-    unmatched_entities = []
-    for entity in entities_summary:
-        if any(entity.lower() in substring_entity.lower() for substring_entity in entities_article):
-            matched_entities.append(entity)
-        elif any(
-                np.inner(sbert.encode(entity, show_progress_bar=False),
-                         sbert.encode(art_entity, show_progress_bar=False)) > 0.9 for
-                art_entity in entities_article):
-            matched_entities.append(entity)
-        else:
-            unmatched_entities.append(entity)
-
-    matched_entities = list(dict.fromkeys(matched_entities))
-    unmatched_entities = list(dict.fromkeys(unmatched_entities))
-
-    matched_entities_to_remove = []
-    unmatched_entities_to_remove = []
-
-    for entity in matched_entities:
-        for substring_entity in matched_entities:
-            if entity != substring_entity and entity.lower() in substring_entity.lower():
-                matched_entities_to_remove.append(entity)
-
-    for entity in unmatched_entities:
-        for substring_entity in unmatched_entities:
-            if entity != substring_entity and entity.lower() in substring_entity.lower():
-                unmatched_entities_to_remove.append(entity)
-
-    matched_entities_to_remove = list(
-        dict.fromkeys(matched_entities_to_remove))
-    unmatched_entities_to_remove = list(
-        dict.fromkeys(unmatched_entities_to_remove))
-
-    for entity in matched_entities_to_remove:
-        matched_entities.remove(entity)
-    for entity in unmatched_entities_to_remove:
-        unmatched_entities.remove(entity)
-
-    return matched_entities, unmatched_entities
-
-# @st.experimental_memo(suppress_st_warning=True)
-
-
-def highlight_entities(article_content, summary_output):
-
-    markdown_start_red = "<mark class=\"entity\" style=\"background: rgb(238, 135, 135);\">"
-    markdown_start_green = "<mark class=\"entity\" style=\"background: rgb(121, 236, 121);\">"
-    markdown_end = "</mark>"
-    summary_output = summary_output.replace("++", "plus plus")
-    summary_output = summary_output.replace('***', '*')
-
-    matched_entities, unmatched_entities = get_and_compare_entities(
-        article_content, summary_output)
-
-    for entity in matched_entities:
-        print(summary_output)
-        print(entity)
-        summary_output = re.sub(
-            f'({entity})(?![^rgb\(]*\))', markdown_start_green + re.escape(entity) + markdown_end, summary_output)
-
-    for entity in unmatched_entities:
-        summary_output = re.sub(
-            f'({entity})(?![^rgb\(]*\))', markdown_start_red + re.escape(entity) + markdown_end, summary_output)
-
-    soup = BeautifulSoup(summary_output, features="html.parser")
-
-    return HTML_WRAPPER.format(soup)
-
+    # st.markdown(f"#### {text_button} ###")
+    # href = f'<a href="data:file/txt;base64,{b64.decode()}" download="{new_filename}">Click to Download!!</a>'
+    # st.markdown(href, unsafe_allow_html=True)
 
 def display_df_as_table(model, top_k, score='score'):
     '''Display the df with text and scores as a table'''
@@ -774,25 +643,6 @@ def display_df_as_table(model, top_k, score='score'):
     df['Score'] = round(df['Score'], 2)
 
     return df
-
-
-def make_spans(text, results):
-    results_list = []
-    for i in range(len(results)):
-        results_list.append(results[i]['label'])
-    facts_spans = []
-    facts_spans = list(zip(sent_tokenizer(text), results_list))
-    return facts_spans
-
-# Fiscal Sentiment by Sentence
-
-
-def fin_ext(text):
-    results = remote_clx(sent_tokenizer(text))
-    return make_spans(text, results)
-
-# Knowledge Graphs code
-
 
 def extract_relations_from_model_output(text):
     relations = []
@@ -839,118 +689,6 @@ def extract_relations_from_model_output(text):
         })
     return relations
 
-
-def from_text_to_kb(text, model, tokenizer, article_url, span_length=128, article_title=None,
-                    article_publish_date=None, verbose=False):
-    # tokenize whole text
-    inputs = tokenizer([text], return_tensors="pt")
-
-    # compute span boundaries
-    num_tokens = len(inputs["input_ids"][0])
-    if verbose:
-        print(f"Input has {num_tokens} tokens")
-    num_spans = math.ceil(num_tokens / span_length)
-    if verbose:
-        print(f"Input has {num_spans} spans")
-    overlap = math.ceil((num_spans * span_length - num_tokens) /
-                        max(num_spans - 1, 1))
-    spans_boundaries = []
-    start = 0
-    for i in range(num_spans):
-        spans_boundaries.append([start + span_length * i,
-                                 start + span_length * (i + 1)])
-        start -= overlap
-    if verbose:
-        print(f"Span boundaries are {spans_boundaries}")
-
-    # transform input with spans
-    tensor_ids = [inputs["input_ids"][0][boundary[0]:boundary[1]]
-                  for boundary in spans_boundaries]
-    tensor_masks = [inputs["attention_mask"][0][boundary[0]:boundary[1]]
-                    for boundary in spans_boundaries]
-    inputs = {
-        "input_ids": torch.stack(tensor_ids),
-        "attention_mask": torch.stack(tensor_masks)
-    }
-
-    # generate relations
-    num_return_sequences = 3
-    gen_kwargs = {
-        "max_length": 256,
-        "length_penalty": 0,
-        "num_beams": 3,
-        "num_return_sequences": num_return_sequences
-    }
-    generated_tokens = model.generate(
-        **inputs,
-        **gen_kwargs,
-    )
-
-    # decode relations
-    decoded_preds = tokenizer.batch_decode(generated_tokens,
-                                           skip_special_tokens=False)
-
-    # create kb
-    kb = KB()
-    i = 0
-    for sentence_pred in decoded_preds:
-        current_span_index = i // num_return_sequences
-        relations = extract_relations_from_model_output(sentence_pred)
-        for relation in relations:
-            relation["meta"] = {
-                article_url: {
-                    "spans": [spans_boundaries[current_span_index]]
-                }
-            }
-            kb.add_relation(relation, article_title, article_publish_date)
-        i += 1
-
-    return kb
-
-
-def get_article(url):
-    article = Article(url)
-    article.download()
-    article.parse()
-    return article
-
-
-def from_url_to_kb(url, model, tokenizer):
-    article = get_article(url)
-    config = {
-        "article_title": article.title,
-        "article_publish_date": article.publish_date
-    }
-    kb = from_text_to_kb(article.text, model, tokenizer, article.url, **config)
-    return kb
-
-
-def get_news_links(query, lang="en", region="US", pages=1):
-    googlenews = GoogleNews(lang=lang, region=region)
-    googlenews.search(query)
-    all_urls = []
-    for page in range(pages):
-        googlenews.get_page(page)
-        all_urls += googlenews.get_links()
-    return list(set(all_urls))
-
-
-def from_urls_to_kb(urls, model, tokenizer, verbose=False):
-    kb = KB()
-    if verbose:
-        print(f"{len(urls)} links to visit")
-    for url in urls:
-        if verbose:
-            print(f"Visiting {url}...")
-        try:
-            kb_url = from_url_to_kb(url, model, tokenizer)
-            kb.merge_with_kb(kb_url)
-        except ArticleException:
-            if verbose:
-                print(f"  Couldn't download article at url {url}")
-    return kb
-
-
 def save_network_html(kb, filename="network.html"):
     # create network
     net = Network(directed=True, width="700px", height="700px")
@@ -987,13 +725,6 @@ class CustomUnpickler(pickle.Unpickler):
         if name == 'KB':
             return KB
         return super().find_class(module, name)
-
-
-def load_kb(filename):
-    res = None
-    with open(filename, "rb") as f:
-        res = CustomUnpickler(f).load()
-    return res
 
 
 class KB():
@@ -1122,21 +853,3 @@ def save_network_html(kb, filename="knowledge_network.html"):
     )
     net.set_edge_smooth('dynamic')
     net.show(filename)
-
-
-nlp = get_spacy()
-
-
-def estimate_ops_time(length_audio):
-    """
-    Function of estimate running time
-    args: [float] length of audio in seconds
-    return: [float] time will need to run in seconds
-    """
-    # 14400 seconds need  9720 seconds to handle
-    return length_audio * 9720 / 14400
-
-# TODO: database handler
-
-
-sent_pipe, sum_pipe, ner_pipe, cross_encoder, kg_model, kg_tokenizer, emb_tokenizer, sbert = load_models()

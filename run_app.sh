@@ -1,1 +1,1 @@
-streamlit run HOME.py --theme.base light --server.maxUploadSize=500 --server.fileWatcherType none
+uvicorn server:app --host 0.0.0.0 --port 8000 --reload

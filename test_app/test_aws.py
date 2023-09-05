@@ -166,11 +166,11 @@ if __name__ == "__main__":
     #                 # TIME             TEXT,
     #                 # STATUS           INT);
     json_data = {
-        "task_id": "b1aa1942-432f-43cc-bdc5-6136a2307462",
-        "file_path": "s3://takenoteai/trungtt/b1aa1942-432f-43cc-bdc5-6136a2307462/Busdriver - Imaginary Places.mp3",
+        "task_id": "1234567",
+        "file_path": "https://www.youtube.com/watch?v=SUA7EQjuDGA",
         "user": "trungtt",
         "email": "trung.tranthanh@pixta.co.jp",
-        "time": "Jul-18-2023-15-01-32",
+        "time": "Jul-22-2023-15-01-32",
         "status": "0"
     }   
         

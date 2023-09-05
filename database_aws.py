@@ -54,8 +54,7 @@ class S3_Handler():
                           file_path,
                           destination_directory):
         # Use the 'destination_directory' to construct the object key (file path within the bucket)
-        object_key = destination_directory.strip(
-            "/") + "/" + file_path.split("/")[-1]
+        object_key = destination_directory
         upload_flag = False
         try:
             self.bucket.upload_file(file_path, object_key)
