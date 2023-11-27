@@ -118,6 +118,20 @@ def file_downloader(raw_text, text_button, header="_", user_name="admin"):
     href = f'<a href="data:file/txt;base64,{b64.decode()}" download="{new_filename}">Click to Download!!</a>'
     st.markdown(href, unsafe_allow_html=True)
 
+def summary_texts(pipe, text_chunks):
+    summary_chuncks = []
+    for chunck in text_chunks:
+        messages = [
+            {
+                "role": "system",
+                "content": "You are a friendly chatbot who give summary concise for a text in plain text not pinpoints.",
+            },
+            {"role": "user", "content": f"{chunck}"},
+        ]
+        prompt = pipe.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+        outputs = pipe(prompt, max_new_tokens=256, do_sample=True, temperature=0.7, top_k=50, top_p=0.95)
+        summary_chuncks.append(outputs[0]["generated_text"].split('<|assistant|>')[-1])
+    return summary_chuncks
 
 if __name__ == "__main__":
     try:
@@ -142,9 +156,12 @@ if __name__ == "__main__":
                 audio_path_raw = download_audio_from_youtube(url_youtube, "demo")
         
         btn_submit = st.button('Get summary')
+        gc.collect()
+        # del pipe  
+        torch.cuda.empty_cache()
         if btn_submit:
             with st.spinner("Transcribing audio"):
-                with open('data/model/model_config.yaml') as file:
+                with open('../data/model/model_config.yaml') as file:
                     model_config = yaml.load(file, Loader=SafeLoader)
                 full_text, _, _, _, _ = transcribe_audio_whisperX(model_config, audio_path_raw, "test", "1234567")
                 with st.expander("Transcription for the audio:"):
@@ -156,36 +173,14 @@ if __name__ == "__main__":
             with st.spinner("Summarizing audio"):
                 with st.expander("Summary for the audio"):
                     pipe = pipeline("text-generation", model="HuggingFaceH4/zephyr-7b-beta", torch_dtype=torch.bfloat16, device_map="auto")
-                    summary_chuncks = []
-                    for chunck in text_chunks:
-                        messages = [
-                            {
-                                "role": "system",
-                                "content": "You are a friendly chatbot who give summary concise for a text in plain text not pinpoints.",
-                            },
-                            {"role": "user", "content": f"{chunck}"},
-                        ]
-                        prompt = pipe.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-                        outputs = pipe(prompt, max_new_tokens=256, do_sample=True, temperature=0.7, top_k=50, top_p=0.95)
-                        summary_chuncks.append(outputs[0]["generated_text"].split('<|assistant|>')[-1])
+                    summary_chuncks = summary_texts(pipe, text_chunks)
+                    summary_text =" ".join(summary_chuncks)
 
-                    if len(chunck) > 0:
+                    while len(summary_text) > 4000:
                         print('too long need chuncks.')
+                        text_chunks = split_text_into_chunks(summary_text, max_tokens=4000)
+                        summary_chuncks = summary_texts(pipe, text_chunks)
                         summary_text =" ".join(summary_chuncks)
-
-                        messages = [
-                            {
-                                "role": "system",
-                                "content": "You are a friendly chatbot who give summary concise for a text in plain text not pinpoints.",
-                            },
-                            {"role": "user", "content": f"{summary_text}"},
-                        ]
-                        prompt = pipe.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-                        outputs = pipe(prompt, max_new_tokens=256, do_sample=True, temperature=0.7, top_k=50, top_p=0.95)
-                        summary_text = outputs[0]["generated_text"].split('<|assistant|>')[-1]
-                    else:
-                        print('short enough!')
-                        summary_text = " ".join(summary_chuncks)
 
                     gc.collect()
                     del pipe  
@@ -206,7 +201,12 @@ if __name__ == "__main__":
                     df = pd.DataFrame([{'file_path': path_file, 'transcript':full_text['text'], 'summary': summary_text}])
                     df.to_csv(f'temp/result/{file_name}.csv', index=False)
 
+                    gc.collect()
+                    torch.cuda.empty_cache()
+
     except Exception as e:
+        gc.collect()
+        torch.cuda.empty_cache()
         print(e)
         traceback.print_exc()
         st.error(e)

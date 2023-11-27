@@ -10,3 +10,4 @@ __pycache__
 whisperX
 env.sh
 audio_path
+venv
