@@ -180,7 +180,7 @@ def summary_texts(pipe, text_chunks):
         messages = [
             {
                 "role": "system",
-                "content": "You are a friendly chatbot who give summary concise for a text in less than 5 sentences, plain text not pinpoints.",
+                "content": "You are a friendly chatbot who give summary concise for a text in plain text not pinpoints.",
             },
             {"role": "user", "content": f"{chunck}"},
         ]
@@ -233,9 +233,9 @@ if __name__ == "__main__":
                     summary_chuncks = summary_texts(pipe, text_chunks)
                     summary_text =" ".join(summary_chuncks)
 
-                    while len(summary_text) > 7000:
+                    while len(summary_text) > 4000:
                         print('too long need chuncks.')
-                        text_chunks = split_text_into_chunks(summary_text, max_tokens=7000)
+                        text_chunks = split_text_into_chunks(summary_text, max_tokens=4000)
                         summary_chuncks = summary_texts(pipe, text_chunks)
                         summary_text =" ".join(summary_chuncks)
 
