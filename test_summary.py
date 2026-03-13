@@ -1,179 +1,134 @@
-from transformers import pipeline
-import time
-from functions import *
+from __future__ import annotations
+
 import gc
-from transformers import pipeline
-import time
-import streamlit as st
-from sentence_transformers import SentenceTransformer, util
 import re
+import time
+from pathlib import Path
 
-alphabets= "([A-Za-z])"
-prefixes = "(Mr|St|Mrs|Ms|Dr)[.]"
-suffixes = "(Inc|Ltd|Jr|Sr|Co)"
-starters = "(Mr|Mrs|Ms|Dr|Prof|Capt|Cpt|Lt|He\s|She\s|It\s|They\s|Their\s|Our\s|We\s|But\s|However\s|That\s|This\s|Wherever)"
-acronyms = "([A-Z][.][A-Z][.](?:[A-Z][.])?)"
-websites = "[.](com|net|org|io|gov|edu|me)"
-digits = "([0-9])"
-multiple_dots = r'\.{2,}'
-modelxx = SentenceTransformer('all-MiniLM-L6-v2')  
-if 'transcription' not in st.session_state:
-    st.session_state['transcription'] = ''
+import pandas as pd
+import streamlit as st
+import torch
+from sentence_transformers import SentenceTransformer, util
 
-def split_into_sentences(text: str):
-    """
-    Split the text into sentences.
-    If the text contains substrings "<prd>" or "<stop>", they would lead 
-    to incorrect splitting because they are used as markers for splitting.
-    :param text: text to be split into sentences
-    :type text: str
-    :return: list of sentences
-    :rtype: list[str]
-    """
+from functions import inference, load_whisperx_model
+
+ALPHABETS = r"([A-Za-z])"
+PREFIXES = r"(Mr|St|Mrs|Ms|Dr)[.]"
+SUFFIXES = r"(Inc|Ltd|Jr|Sr|Co)"
+STARTERS = r"(Mr|Mrs|Ms|Dr|Prof|Capt|Cpt|Lt|He\s|She\s|It\s|They\s|Their\s|Our\s|We\s|But\s|However\s|That\s|This\s|Wherever)"
+ACRONYMS = r"([A-Z][.][A-Z][.](?:[A-Z][.])?)"
+WEBSITES = r"[.](com|net|org|io|gov|edu|me)"
+DIGITS = r"([0-9])"
+MULTIPLE_DOTS = r"\.{2,}"
+
+MODEL = SentenceTransformer("all-MiniLM-L6-v2")
+if "transcription" not in st.session_state:
+    st.session_state["transcription"] = ""
+
+
+def split_into_sentences(text: str) -> list[str]:
     text = " " + text + "  "
-    text = text.replace("\n"," ")
-    text = re.sub(prefixes,"\\1<prd>",text)
-    text = re.sub(websites,"<prd>\\1",text)
-    text = re.sub(digits + "[.]" + digits,"\\1<prd>\\2",text)
-    text = re.sub(multiple_dots, lambda match: "<prd>" * len(match.group(0)) + "<stop>", text)
-    if "Ph.D" in text: text = text.replace("Ph.D.","Ph<prd>D<prd>")
-    text = re.sub("\s" + alphabets + "[.] "," \\1<prd> ",text)
-    text = re.sub(acronyms+" "+starters,"\\1<stop> \\2",text)
-    text = re.sub(alphabets + "[.]" + alphabets + "[.]" + alphabets + "[.]","\\1<prd>\\2<prd>\\3<prd>",text)
-    text = re.sub(alphabets + "[.]" + alphabets + "[.]","\\1<prd>\\2<prd>",text)
-    text = re.sub(" "+suffixes+"[.] "+starters," \\1<stop> \\2",text)
-    text = re.sub(" "+suffixes+"[.]"," \\1<prd>",text)
-    text = re.sub(" " + alphabets + "[.]"," \\1<prd>",text)
-    if "”" in text: text = text.replace(".”","”.")
-    if "\"" in text: text = text.replace(".\"","\".")
-    if "!" in text: text = text.replace("!\"","\"!")
-    if "?" in text: text = text.replace("?\"","\"?")
-    text = text.replace(".",".<stop>")
-    text = text.replace("?","?<stop>")
-    text = text.replace("!","!<stop>")
-    text = text.replace(",","!<stop>")
-    text = text.replace("<prd>",".")
-    sentences = text.split("<stop>")
-    sentences = [s.strip() for s in sentences]
-    ss = []
-    for s in sentences:
-        ss.extend(s.split(','))
-    sentences = ss
-    if sentences and not sentences[-1]: sentences = sentences[:-1]
+    text = text.replace("\n", " ")
+    text = re.sub(PREFIXES, "\\1<prd>", text)
+    text = re.sub(WEBSITES, "<prd>\\1", text)
+    text = re.sub(DIGITS + "[.]" + DIGITS, "\\1<prd>\\2", text)
+    text = re.sub(MULTIPLE_DOTS, lambda m: "<prd>" * len(m.group(0)) + "<stop>", text)
+    text = text.replace("Ph.D.", "Ph<prd>D<prd>")
+    text = re.sub("\\s" + ALPHABETS + "[.] ", " \\1<prd> ", text)
+    text = re.sub(ACRONYMS + " " + STARTERS, "\\1<stop> \\2", text)
+    text = re.sub(ALPHABETS + "[.]" + ALPHABETS + "[.]" + ALPHABETS + "[.]", "\\1<prd>\\2<prd>\\3<prd>", text)
+    text = re.sub(ALPHABETS + "[.]" + ALPHABETS + "[.]", "\\1<prd>\\2<prd>", text)
+    text = re.sub(" " + SUFFIXES + "[.] " + STARTERS, " \\1<stop> \\2", text)
+    text = re.sub(" " + SUFFIXES + "[.]", " \\1<prd>", text)
+    text = re.sub(" " + ALPHABETS + "[.]", " \\1<prd>", text)
+    text = text.replace(".”", "”.").replace('."', '".').replace('!"', '"!').replace('?"', '"?')
+    text = text.replace(".", ".<stop>").replace("?", "?<stop>").replace("!", "!<stop>")
+    text = text.replace("<prd>", ".")
+    sentences = [s.strip() for s in text.split("<stop>") if s.strip()]
     return sentences
 
-def on_click_search(st_text, st_query):
-    
-    sentences1=split_into_sentences(st_text) 
-    sentences2=[st_query]
-    embeddings1 = modelxx.encode(sentences1, convert_to_tensor=True)
-    embeddings2 = modelxx.encode(sentences2, convert_to_tensor=True)
 
-    #Compute cosine-similarities
+def on_click_search(st_text: str, st_query: str):
+    sentences = split_into_sentences(st_text)
+    if not sentences:
+        return "", None
+
+    embeddings1 = MODEL.encode(sentences, convert_to_tensor=True)
+    embeddings2 = MODEL.encode([st_query], convert_to_tensor=True)
     cosine_scores = util.cos_sim(embeddings1, embeddings2)
 
-    max_score = 0.0
-    max_sentence = ""
-    
-
-    for i in range(len(sentences1)): 
-
-        if cosine_scores[i][0] > max_score:
-            max_score = cosine_scores[i][0] 
-            max_sentence = sentences1[i]
-    
-    if max_score.detach().cpu() > 0.51:
+    max_idx = int(torch.argmax(cosine_scores[:, 0]).item())
+    max_sentence = sentences[max_idx]
+    if float(cosine_scores[max_idx][0]) > 0.51:
         return max_sentence, None
-    
-    c = []
-    s = []
-    for i in range(len(sentences1)): 
-        if cosine_scores[i][0].detach().cpu() > 0.3:
-            c.append(cosine_scores[i][0])
-            s.append(sentences1[i])
-            
-    c=[x.detach().cpu() for x in c]
 
-    df=pd.DataFrame({'Sentences':s,'Score':c})
+    scored = [
+        (sentences[i], float(cosine_scores[i][0]))
+        for i in range(len(sentences))
+        if float(cosine_scores[i][0]) > 0.3
+    ]
+    if not scored:
+        return max_sentence, None
 
-    df1=df.sort_values('Score',ascending=False) 
-    df1.set_index("Sentences",inplace=True)
+    df = pd.DataFrame(scored, columns=["Sentences", "Score"]).sort_values("Score", ascending=False)
+    df.set_index("Sentences", inplace=True)
+    return max_sentence, df
 
-    return max_sentence, df1
 
-def transcribe_audio_whisperX(audio_path, user, task_id):
+def transcribe_audio_whisperX(audio_path: str, user: str, task_id: str):
     start_time = time.time()
     asr_model = load_whisperx_model("medium")
-    texts, title, segments, language, audio_path = inference(asr_model, audio_path, user, task_id)
-    
-    end_time = time.time()
-    passages = texts
-    print(end_time - start_time)
+    texts, title, segments, language, output_audio_path = inference(asr_model, audio_path, user, task_id)
+
+    running_time = time.time() - start_time
     gc.collect()
     torch.cuda.empty_cache()
     del asr_model
+    return texts, title, segments, language, running_time, output_audio_path
 
-    return passages, title, segments, language, end_time - start_time, audio_path
+
+def main() -> None:
+    st.title("Transcript Search Demo")
+    task_id = "abcdef123456"
+    temp_dir = Path("../temp/test")
+    temp_dir.mkdir(parents=True, exist_ok=True)
+
+    select_box = st.selectbox("select mode", ["Upload audio", "Upload text"])
+    if select_box == "Upload audio":
+        upload_input = st.file_uploader("Upload a .wav or .mp3 sound file", key="upload_audio", type=[".wav", ".mp3", ".mp4", ".m4a"])
+        if st.button("Submit Audio"):
+            st.session_state["transcription"] = ""
+            if upload_input is None:
+                st.warning("Please upload file!")
+            else:
+                audio_path_raw = str(temp_dir / upload_input.name)
+                with open(audio_path_raw, "wb") as fp:
+                    fp.write(upload_input.getbuffer())
+                with st.spinner(text="Transcribing..."):
+                    passages, *_ = transcribe_audio_whisperX(audio_path_raw, "test", task_id)
+                st.session_state["transcription"] = passages
+
+    if select_box == "Upload text":
+        upload_input = st.file_uploader("Upload a text file", key="upload_text", type=[".txt", ".text"])
+        if upload_input is not None:
+            text_file = temp_dir / upload_input.name
+            with open(text_file, "wb") as fp:
+                fp.write(upload_input.getbuffer())
+            st.session_state["transcription"] = text_file.read_text(encoding="utf-8")
+
+    if st.session_state["transcription"]:
+        st.write(st.session_state["transcription"])
+        st_query = st.text_input("Enter your query here")
+        if st.button("Search"):
+            if not st_query:
+                st.warning("no text input")
+            else:
+                sentence, matches = on_click_search(st.session_state["transcription"], st_query)
+                st.write(f"Best match: {sentence}")
+                if matches is not None:
+                    st.write("Other related results:")
+                    st.dataframe(matches)
+
 
 if __name__ == "__main__":
-            print("TRANSCRIBING...")
-            task_id = 'abcdef123456'
-            select_box = st.selectbox('select mode', ['Upload audio', 'Upload text'])
-            if select_box == 'Upload audio':
-                upload_input = st.empty()
-                    # clean_directory([f"./temp/youtube/{username}", f"./temp/vimeo/{username}"])
-                upload_input = st.file_uploader("Upload a .wav or .mp3 sound file",
-                                                    key="upload", 
-                                                    type=['.wav','.mp3','.mp4','.m4a'])
-                btn_submit = st.button('Submit')
-
-                if btn_submit:
-                        st.session_state['transcription'] = ''
-                        if upload_input is not None:
-                                    with st.spinner(text="Submitting..."):
-                                            with open(f"../temp/test/{upload_input.name}", "wb") as f:
-                                                f.write(upload_input.getbuffer())
-                                            audio_path_raw = f"../temp/test/{upload_input.name}"
-                        else:
-                                st.warning("Please upload file!")
-                        
-                        with st.spinner(text="Transcribing..."):
-                            passages, title, segments, language, running_time, audio_path  = transcribe_audio_whisperX(audio_path_raw, 'test', task_id)
-                        
-                        st.session_state['transcription'] = passages
-                        # Save passges into file, 
-            
-            if select_box == 'Upload text':
-                upload_input = st.empty()
-                st.session_state['transcription'] = ''
-
-                # clean_directory([f"./temp/youtube/{username}", f"./temp/vimeo/{username}"])
-                upload_input = st.file_uploader("Upload a text file",
-                                                    key="upload", 
-                                                    type=['.txt', '.text'])
-                if upload_input is not None:
-                    with open(f"../temp/test/{upload_input.name}", "wb") as f:
-                        f.write(upload_input.getbuffer())
-                    text_file = f"../temp/test/{upload_input.name}"
-                    with open(text_file, 'r') as f:
-                        passages = f.readlines()
-                    st.session_state['transcription'] = passages[0]
-
-
-            if st.session_state['transcription'] != '':
-                st.write(st.session_state['transcription'])
-                st_query = st.text_input('Enter your query here')
-
-                s_button = st.button("Search")
-                
-                if s_button:
-                    if st_query != "":
-                        s, df1 = on_click_search(st.session_state['transcription'], st_query)
-                        if df1 is None:
-                            st.write("the info is: ", s)
-                        else:
-                            st.write(f'the best info is: {s}')
-                            st.write('other related result:')
-                            st.write(df1)
-                    else:
-                        st.warning('no text input')
+    main()
