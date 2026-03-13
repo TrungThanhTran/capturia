@@ -1,291 +1,121 @@
-import smtplib
-import ssl
-import os
-from email.message import EmailMessage
-from email.utils import make_msgid
-import mimetypes
+from __future__ import annotations
 
 import datetime
+import mimetypes
+import os
+import smtplib
+import ssl
+from email.message import EmailMessage
+
 import yaml
 from yaml.loader import SafeLoader
 
 
-class Email_Sender():
-    def __init__(self):
-        with open('data/email/email_config.yaml') as file:
+class Email_Sender:
+    """Small service object for transactional emails."""
+
+    def __init__(self, config_path: str = "data/email/email_config.yaml") -> None:
+        with open(config_path, encoding="utf-8") as file:
             email_config = yaml.load(file, Loader=SafeLoader)
-        self.email_sender = email_config['sender']['email']
-        self.email_password = email_config['sender']['pass']
-        self.subject = email_config['sender']['subject']
-        self.ssl = email_config['sender']['ssl']
-        self.host = email_config['sender']['host']
 
-    def get_body(self, time_stamp, task_id):
-        body = f"""<td valign="top"
-        style="background:white;padding:0cm 0cm 0cm 0cm;border-top:transparent;border-left:transparent;border-bottom:transparent;border-right:transparent">
-        <div>
-            <div>
-                <div>
-                    <div align="center">
-                        <table border="0" cellspacing="0" cellpadding="0" width="100%"
-                            style="width:100.0%;border-collapse:collapse">
-                            <tbody>
-                                <tr>
-                                    <td valign="top" style="padding:0cm 0cm 0cm 0cm">
-                                        <div align="center">
-                                            <table border="0" cellspacing="0" cellpadding="0" width="500"
-                                                style="width:375.0pt;border-collapse:collapse">
-                                                <tbody>
-                                                    <tr>
-                                                        <td width="500" valign="top"
-                                                            style="width:375.0pt;padding:0cm 0cm 0cm 0cm">
-                                                            <div align="center">
-                                                                <table border="0" cellspacing="0" cellpadding="0"
-                                                                    width="100%"
-                                                                    style="width:100.0%;border-collapse:collapse">
-                                                                    <tbody>
-                                                                        <tr>
-                                                                            <td valign="top"
-                                                                                style="background:white;padding:3.75pt 0cm 0cm 0cm">
-                                                                                <div>
-                                                                                    <div>
-                                                                                        <div align="center">
-                                                                                            <table border="0"
-                                                                                                cellspacing="0"
-                                                                                                cellpadding="0" width="100%"
-                                                                                                style="width:100.0%;border-collapse:collapse">
-                                                                                                <tbody>
-                                                                                                    <tr>
-                                                                                                        <td valign="top"
-                                                                                                            style="padding:0cm 0cm 0cm 0cm">
-                                                                                                            <p class="MsoNormal"
-                                                                                                                align="center"
-                                                                                                                style="text-align:center">
-                                                                                                                <a href="https://www.takenote.ai/"
-                                                                                                                    target="_blank"
-                                                                                                                    data-saferedirecturl="https://www.takenote.ai/"><span
-                                                                                                                        style="text-decoration:none"><img
-                                                                                                                            width="500"
-                                                                                                                            style="width:2in;"
-                                                                                                                            id="takenote"
-                                                                                                                            src="{self.host}/media/9ef6936d0816b5ae764ae9ecfafe029e2fde956f9028760baa6f18bc.png"
-                                                                                                                            class="CToWUd"
-                                                                                                                            data-bit="iit"></span></a><u></u><u></u>
-                                                                                                            </p>
-                                                                                                        </td>
-                                                                                                    </tr>
-                                                                                                </tbody>
-                                                                                            </table>
-                                                                                        </div>
-                                                                                        <p class="MsoNormal"
-                                                                                            style="background:white;vertical-align:top">
-                                                                                            <span
-                                                                                                style="display:none"><u></u>&nbsp;<u></u></span>
-                                                                                        </p>
-                                                                                        <table border="0" cellspacing="0"
-                                                                                            cellpadding="0" width="100%"
-                                                                                            style="width:100.0%;border-collapse:collapse">
-                                                                                            <tbody>
-                                                                                                <tr>
-                                                                                                    <td valign="top"
-                                                                                                        style="padding:11.25pt 7.5pt 11.25pt 7.5pt">
-                                                                                                        <div>
-                                                                                                            <div>
-                                                                                                                <p align="center"
-                                                                                                                    style="margin:0cm;text-align:center;line-height:33.75pt;word-break:break-word">
-                                                                                                                    <strong><span
-                                                                                                                            style="font-size:21.0pt;font-family:&quot;Open Sans&quot;,sans-serif;color:#333333">Your
-                                                                                                                            Automated
-                                                                                                                            Transcript
-                                                                                                                            is
-                                                                                                                            ready!
-                                                                                                                        </span></strong><span
-                                                                                                                        style="font-size:22.5pt;font-family:&quot;Open Sans&quot;,sans-serif;color:#4a4a4a"><u></u><u></u></span>
-                                                                                                                </p>
-                                                                                                            </div>
-                                                                                                        </div>
-                                                                                                    </td>
-                                                                                                </tr>
-                                                                                            </tbody>
-                                                                                        </table>
-                                                                                    </div>
-                                                                                </div>
-                                                                            </td>
-                                                                        </tr>
-                                                                    </tbody>
-                                                                </table>
-                                                            </div>
-                                                        </td>
-                                                    </tr>
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div align="center">
-            <table border="0" cellspacing="0" cellpadding="0" width="100%" style="width:100.0%;border-collapse:collapse">
-                <tbody>
-                    <tr>
-                        <td valign="top" style="padding:0cm 0cm 0cm 0cm">
-                            <div align="center">
-                                <table border="0" cellspacing="0" cellpadding="0" width="500"
-                                    style="width:375.0pt;border-collapse:collapse">
-                                    <tbody>
-                                        <tr>
-                                            <td width="250" valign="top" style="width:187.5pt;padding:0cm 0cm 0cm 0cm">
-                                                <div align="center">
-                                                    <table border="0" cellspacing="0" cellpadding="0" width="100%"
-                                                        style="width:100.0%;border-collapse:collapse">
-                                                        <tbody>
-                                                            <tr>
-                                                                <td valign="top" style="padding:3.75pt 0cm 3.75pt 0cm">
-                                                                    <div>
-                                                                        <div>
-                                                                            <table border="0" cellspacing="0"
-                                                                                cellpadding="0" width="100%"
-                                                                                style="width:100.0%;border-collapse:collapse">
-                                                                                <tbody>
-                                                                                    <tr>
-                                                                                        <td valign="top"
-                                                                                            style="padding:7.5pt 7.5pt 7.5pt 7.5pt">
-                                                                                            <div>
-                                                                                                <div>
-                                                                                                    <p
-                                                                                                        style="margin:0cm;line-height:12.75pt">
-                                                                                                        <strong><span
-                                                                                                                style="font-size:10.5pt;font-family:&quot;Open Sans&quot;,sans-serif;color:#4a4a4a">Order
-                                                                                                                #:</span></strong><span
-                                                                                                            style="font-size:10.5pt;font-family:&quot;Open Sans&quot;,sans-serif;color:#4a4a4a">
-                                                                                                            <a href="{self.host}/MyFiles?task={task_id}"
-                                                                                                                target="_blank"
-                                                                                                                data-saferedirecturl="{self.host}/MyFiles?task={task_id}"><span
-                                                                                                                    style="color:#4a90e2;text-decoration:none">{task_id}</span></a><u></u><u></u></span>
-                                                                                                    </p>
-                                                                                                </div>
-                                                                                            </div>
-                                                                                        </td>
-                                                                                    </tr>
-                                                                                </tbody>
-                                                                            </table>
-                                                                        </div>
-                                                                    </div>
-                                                                </td>
-                                                            </tr>
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                            </td>
-                                            <td width="250" valign="top"
-                                                style="width:187.5pt;padding:0cm 0cm 0cm 0cm;border-top:transparent;border-left:transparent;border-bottom:transparent;border-right:transparent">
-                                                <div align="center">
-                                                    <table border="0" cellspacing="0" cellpadding="0" width="100%"
-                                                        style="width:100.0%;border-collapse:collapse">
-                                                        <tbody>
-                                                            <tr>
-                                                                <td valign="top"
-                                                                    style="padding:3.75pt 0cm 3.75pt 0cm;word-break:break-word">
-                                                                    <div>
-                                                                        <div>
-                                                                            <table border="0" cellspacing="0"
-                                                                                cellpadding="0" width="100%"
-                                                                                style="width:100.0%;border-collapse:collapse">
-                                                                                <tbody>
-                                                                                    <tr>
-                                                                                        <td valign="top"
-                                                                                            style="padding:7.5pt 7.5pt 7.5pt 7.5pt">
-                                                                                            <div>
-                                                                                                <div>
-                                                                                                    <p align="right"
-                                                                                                        style="margin:0cm;text-align:right;line-height:12.0pt">
-                                                                                                        <strong><span
-                                                                                                                style="font-size:10.5pt;font-family:&quot;Open Sans&quot;,sans-serif;color:#4a4a4a">&nbsp;
-                                                                                                                Placed
-                                                                                                                On:</span></strong><span
-                                                                                                            style="font-size:10.5pt;font-family:&quot;Open Sans&quot;,sans-serif;color:#4a4a4a"><u></u><u></u></span>
-                                                                                                    </p>
-                                                                                                    <p align="right"
-                                                                                                        style="margin:0cm;text-align:right;line-height:12.0pt;word-break:break-word">
-                                                                                                        <span
-                                                                                                            style="font-size:10.5pt;font-family:&quot;Open Sans&quot;,sans-serif;color:#4a4a4a">{time_stamp}"""
-        return body
+        sender_cfg = email_config["sender"]
+        self.email_sender = sender_cfg["email"]
+        self.email_password = sender_cfg["pass"]
+        self.subject = sender_cfg["subject"]
+        self.ssl = sender_cfg["ssl"]
+        self.host = sender_cfg.get("host", "")
 
-    def setup_email(self, msg, email_receiver, subject=None):
-        if subject != None:
-            _subject = _subject
-        else:
-            _subject = self.subject
+    def get_body(self, time_stamp: str, task_id: str = "") -> str:
+        """Return a compact HTML notification body."""
+        task_html = f"<p><strong>Task ID:</strong> {task_id}</p>" if task_id else ""
+        return f"""
+        <html>
+          <body>
+            <h3>Your transcript request has been processed.</h3>
+            {task_html}
+            <p><strong>Placed On:</strong> {time_stamp}</p>
+            <p>Thank you for using TakeNote AI.</p>
+            <p><a href=\"https://www.takenote.ai/\">Visit website</a></p>
+          </body>
+        </html>
+        """
 
-        msg['Subject'] = _subject
-        msg['From'] = self.email_sender
-        msg['To'] = email_receiver
+    def setup_email(self, msg: EmailMessage, email_receiver: str, subject: str | None = None) -> EmailMessage:
+        selected_subject = subject if subject is not None else self.subject
+        msg["Subject"] = selected_subject
+        msg["From"] = self.email_sender
+        msg["To"] = email_receiver
         return msg
 
-    def check_email(self, rev_email):
+    def _open_smtp(self) -> smtplib.SMTP_SSL:
+        context = ssl.create_default_context()
+        return smtplib.SMTP_SSL(self.ssl, 465, context=context)
+
+    def check_email(self, rev_email: str) -> str | None:
         if "@" not in rev_email:
             return "Email is in-valid"
+        return None
 
-    def send_email_attach(self,
-                          email_receiver,
-                          task_id,
-                          path_to_file,
-                          content='This is a plain text body.',
-                          subject=None):
-        
+    def send_email_attach(
+        self,
+        email_receiver: str,
+        task_id: str,
+        path_to_file: str,
+        content: str = "This is a plain text body.",
+        subject: str | None = None,
+    ) -> None:
         msg = EmailMessage()
-        msg = self.setup_email(msg, email_receiver, subject)
-        mime_type, _ = mimetypes.guess_type(path_to_file)
-        
-        mime_type, mime_subtype = mime_type.split('/', 1)
-        # msg.set_content(content)
-        with open(path_to_file, 'r') as ap:
-            msg.add_attachment(ap.read(), maintype=mime_type, subtype=mime_subtype,
-                            filename=os.path.basename(path_to_file))
-        
-        context = ssl.create_default_context()
-        with smtplib.SMTP_SSL(self.ssl, 465, context=context) as smtp:
-            smtp.login(self.email_sender, self.email_password)
-            smtp.sendmail(self.email_sender, email_receiver, msg)
-
-    def send_notify(self,
-                    email_receiver,
-                    content='This is a plain text body.',
-                    subject=None):
-        msg = EmailMessage()
-        msg = self.setup_email(msg, email_receiver, subject)
+        self.setup_email(msg, email_receiver, subject)
         msg.set_content(content)
 
-        x = datetime.datetime.now()
-        time_stamp = x.strftime("%Y-%m-%d %H:%M:%S")
-        body = self.get_body(time_stamp)
+        mime_type = mimetypes.guess_type(path_to_file)[0] or "application/octet-stream"
+        maintype, subtype = mime_type.split("/", 1)
 
-        msg.add_alternative(body, subtype='html')
-        context = ssl.create_default_context()
-        with smtplib.SMTP_SSL(self.ssl, 465, context=context) as smtp:
+        with open(path_to_file, "rb") as attachment:
+            msg.add_attachment(
+                attachment.read(),
+                maintype=maintype,
+                subtype=subtype,
+                filename=os.path.basename(path_to_file),
+            )
+
+        with self._open_smtp() as smtp:
             smtp.login(self.email_sender, self.email_password)
             smtp.sendmail(self.email_sender, email_receiver, msg.as_string())
-    
-        def send_email_text(self,
-                        email_receiver,
-                        notify_text,
-                        content='This is a plain text body.',
-                        subject=None):
-            msg = EmailMessage()
-            msg = self.setup_email(msg, email_receiver, subject)
-            msg.set_content(content)
 
-            x = datetime.datetime.now()
-            time_stamp = x.strftime("%Y-%m-%d %H:%M:%S")
-            body = notify_text + ' ' + time_stamp
+    def send_notify(
+        self,
+        email_receiver: str,
+        content: str = "This is a plain text body.",
+        subject: str | None = None,
+    ) -> None:
+        msg = EmailMessage()
+        self.setup_email(msg, email_receiver, subject)
+        msg.set_content(content)
 
-            msg.add_alternative(body, subtype='html')
-            context = ssl.create_default_context()
-            with smtplib.SMTP_SSL(self.ssl, 465, context=context) as smtp:
-                smtp.login(self.email_sender, self.email_password)
-                smtp.sendmail(self.email_sender, email_receiver, msg.as_string())  
-        
+        time_stamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        body = self.get_body(time_stamp)
+        msg.add_alternative(body, subtype="html")
+
+        with self._open_smtp() as smtp:
+            smtp.login(self.email_sender, self.email_password)
+            smtp.sendmail(self.email_sender, email_receiver, msg.as_string())
+
+    def send_email_text(
+        self,
+        email_receiver: str,
+        notify_text: str,
+        content: str = "This is a plain text body.",
+        subject: str | None = None,
+    ) -> None:
+        msg = EmailMessage()
+        self.setup_email(msg, email_receiver, subject)
+        msg.set_content(content)
+
+        time_stamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        body = f"{notify_text} {time_stamp}"
+        msg.add_alternative(body, subtype="html")
+
+        with self._open_smtp() as smtp:
+            smtp.login(self.email_sender, self.email_password)
+            smtp.sendmail(self.email_sender, email_receiver, msg.as_string())
