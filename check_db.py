@@ -1,17 +1,13 @@
+from __future__ import annotations
+
 from database import DBHandler
-import sys
-sys.path.append('../')
-dbhandler = DBHandler()
-
-ret_task = dbhandler.check_db('TASK_QUEUE')
-print('task queue = ', ret_task)
-done_task = dbhandler.check_db('DONE_QUEUE')
-print('done queue = ', done_task)
-error_task = dbhandler.check_db('ERROR_QUEUE')
-print('error queue = ', error_task)
 
 
+def main() -> None:
+    dbhandler = DBHandler()
+    for table_name in ("TASK_QUEUE", "DONE_QUEUE", "ERROR_QUEUE"):
+        print(f"{table_name.lower()} = {dbhandler.check_db(table_name)}")
 
 
-
-
+if __name__ == "__main__":
+    main()
