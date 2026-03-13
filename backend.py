@@ -1,203 +1,220 @@
-from functions import *
-from database import DBHandler
+from __future__ import annotations
+
+import gc
+import json
+import os
+import time
+from datetime import datetime
+from glob import glob
+from pathlib import Path
+from typing import Any
+
+import torch
+import yaml
+from yaml.loader import SafeLoader
+
 from database_aws import S3_Handler, SQS_Handler
 from email_sender import Email_Sender
-from datetime import datetime
-import json
-import gc
-from glob import glob
+from functions import (
+    align_speaker,
+    assign_speaker,
+    convert_string_ASCII,
+    inference,
+    load_sentiment_models,
+    load_whisperx_model,
+    save_file_json,
+    save_file_text,
+    sentiment_pipe,
+)
 from logger import log_api_error, log_api_result
 
 
-def sentimet_audio(passage):
+MODEL_CONFIG_PATH = "data/model/model_config.yaml"
+
+
+def load_model_config(path: str = MODEL_CONFIG_PATH) -> dict[str, Any]:
+    with open(path, encoding="utf-8") as file:
+        return yaml.load(file, Loader=SafeLoader)
+
+
+def sentimet_audio(passage: str):
     sent_pipe = load_sentiment_models()
-    log_api_result('succesfully load the model')
+    log_api_result("successfully loaded sentiment model")
     sentiment, sentences = sentiment_pipe(sent_pipe, passage)
-    log_api_result('sentiment done!')
+    log_api_result("sentiment done")
     gc.collect()
     torch.cuda.empty_cache()
     del sent_pipe
     return sentiment, sentences
 
 
-def transcribe_audio_whisperX(model_config, audio_path, user, task_id):
-    log_api_result('Start transcribing audio file...')
+def transcribe_audio_whisperX(model_config: dict[str, Any], audio_path: str, user: str, task_id: str):
+    log_api_result("Start transcribing audio file")
     start_time = time.time()
-    asr_model = load_whisperx_model("medium", 
-                                    model_config['transcribe']['device'],
-                                    model_config['transcribe']['compute_type'])
-    
-    # results, "Transcribed Audio", results['segments'], "en", file_path
-    results, title, language, audio_path = inference(
-        asr_model, audio_path, user, task_id, model_config['transcribe']['batch_size'])
+    asr_model = load_whisperx_model(
+        "medium",
+        model_config["transcribe"]["device"],
+        model_config["transcribe"]["compute_type"],
+    )
 
-    end_time = time.time()
-    log_api_result(f'Transcription time = {end_time - start_time}')
+    results, title, language, output_audio_path = inference(
+        asr_model,
+        audio_path,
+        user,
+        task_id,
+        model_config["transcribe"]["batch_size"],
+    )
+
+    elapsed = time.time() - start_time
+    log_api_result(f"Transcription time = {elapsed}")
 
     gc.collect()
     torch.cuda.empty_cache()
     del asr_model
 
-    return results, title, language, end_time - start_time, audio_path
+    return results, title, language, elapsed, output_audio_path
 
-def diarize_speaker_whisperX(audio_path, segments, device, hf_token):
-    colors = ['red', 'green', 'yellow', 'blue',
-              'cyan', 'lime', 'magenta', 'pink', 'orange']
-    
+
+def diarize_speaker_whisperX(audio_path: str, segments: list[dict[str, Any]], device: str, hf_token: str):
     start = time.time()
     align_result = align_speaker(segments, audio_path, device)
     log_api_result(f"time to align = {time.time() - start} seconds")
-    start = time.time()
 
+    start = time.time()
     result = assign_speaker(align_result, audio_path, hf_token, device)
     log_api_result(f"time to assign = {time.time() - start} seconds")
-    
-    trans = []
 
-    for seg in result["segments"]:
-        dict_spek = {}
-        try:
-            dict_spek['text'] = seg['text']
-            dict_spek['speaker'] = seg['speaker']
-            dict_spek['start'] = seg['start']
-            dict_spek['end'] = seg['end']
-        except:
+    transcript_with_speaker = []
+    for seg in result.get("segments", []):
+        text = seg.get("text")
+        speaker = seg.get("speaker")
+        seg_start = seg.get("start")
+        seg_end = seg.get("end")
+        if text is None or speaker is None or seg_start is None or seg_end is None:
             continue
-        trans.append(dict_spek)
-    
-    log_api_result('diarization speaker done!')
+        transcript_with_speaker.append(
+            {"text": text, "speaker": speaker, "start": seg_start, "end": seg_end}
+        )
 
-    return trans
+    log_api_result("diarization speaker done")
+    return transcript_with_speaker
 
 
-def main():
-    S3_BUCKETNAME = os.environ['S3_BUCKETNAME']
-    TASK_QUEUE = os.environ['TASK_QUEUE']
-    ERROR_QUEUE = os.environ['ERROR_QUEUE']
-    FINISH_QUEUE = os.environ['FINISH_QUEUE']
-    
-    emailsender = Email_Sender()
-    s3_handler = S3_Handler(S3_BUCKETNAME)
+def _required_env(name: str) -> str:
+    value = os.environ.get(name)
+    if not value:
+        raise EnvironmentError(f"Missing required environment variable: {name}")
+    return value
+
+
+def _ensure_user_temp_dir(user: str) -> Path:
+    temp_dir = Path("temp") / user
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    return temp_dir
+
+
+def main() -> None:
+    model_config = load_model_config()
+
+    s3_bucket_name = _required_env("S3_BUCKETNAME")
+    task_queue = _required_env("TASK_QUEUE")
+    error_queue = _required_env("ERROR_QUEUE")
+    finish_queue = _required_env("FINISH_QUEUE")
+
+    email_sender = Email_Sender()
+    s3_handler = S3_Handler(s3_bucket_name)
     sqs_handler = SQS_Handler()
 
-    while (True):
-        # Get task
-        task_id, audio_path_raw, user, rev_email, task_time, status = sqs_handler.get_message(
-            TASK_QUEUE)
-        
-        if (task_id == None) or (audio_path_raw == None):
+    while True:
+        task_id, audio_path_raw, user, rev_email, task_time, status = sqs_handler.get_message(task_queue)
+
+        if not task_id or not audio_path_raw:
             continue
-        
+
         print("GET A TASK...")
-        # Save file audio into file
-        # Create temp path if need
-        if not os.path.exists(f'./temp/{user}/'):
-           os.mkdir(f'./temp/{user}/') 
-        
-        # Configure response queue
-        json_data = {}
-        json_data["task_id"] = task_id
-        json_data["file_path"] = audio_path_raw
-        json_data["user"] = user
-        json_data["email"] = rev_email
-        json_data["time"] = task_time
+        user_temp_dir = _ensure_user_temp_dir(user)
 
-        # Create task_id on S3
-        s3_path_task = f'{user}/{task_id}/'
+        json_data = {
+            "task_id": task_id,
+            "file_path": audio_path_raw,
+            "user": user,
+            "email": rev_email,
+            "time": task_time,
+        }
+        s3_path_task = f"{user}/{task_id}/"
 
-        # Get list user
-        registered_user = s3_handler.list_username_in_bucket()
-        if user not in registered_user:
-            s3_handler.create_s3_folder(f'{user}')
-
+        if user not in s3_handler.list_username_in_bucket():
+            s3_handler.create_s3_folder(user)
         s3_handler.create_s3_folder(s3_path_task)
-        try:
-            # Processing task
-            # 1. transcribe
-            print("TRANSCRIBING...")
-            
-            file_name = os.path.basename(audio_path_raw)
-            local_file_path = f'./temp/{user}/{file_name}'
-            if "s3" in audio_path_raw:
-                audio_path_s3 = audio_path_raw.replace(f"s3://{S3_BUCKETNAME}/", "")
-                download_flag = s3_handler.download_file_from_s3(audio_path_s3, local_file_path)
 
+        try:
+            print("TRANSCRIBING...")
+            file_name = os.path.basename(audio_path_raw)
+            local_file_path = str(user_temp_dir / file_name)
+
+            if audio_path_raw.startswith(f"s3://{s3_bucket_name}/"):
+                audio_path_s3 = audio_path_raw.replace(f"s3://{s3_bucket_name}/", "")
+                download_flag = s3_handler.download_file_from_s3(audio_path_s3, local_file_path)
             else:
                 local_file_path = audio_path_raw
                 download_flag = True
-            assert download_flag == True
-            passages, title, segments, language, running_time, audio_path = transcribe_audio_whisperX(
-                local_file_path, user, task_id)
-            
-            # Save passges into file,
-            save_file_text(passages, f'./temp/{user}/passages.txt')
-            s3_handler.upload_file_to_s3(
-                f'./temp/{user}/passages.txt', s3_path_task)
 
-            save_file_text(title, f'./temp/{user}/title.txt')
-            s3_handler.upload_file_to_s3(
-                f'./temp/{user}/title.txt', s3_path_task)
+            if not download_flag:
+                raise RuntimeError("Failed to download source audio")
 
-            save_file_json(segments, f'./temp/{user}/segments.json')
-            s3_handler.upload_file_to_s3(
-                f'./temp/{user}/segments.json', s3_path_task)
+            results, title, language, running_time, audio_path = transcribe_audio_whisperX(
+                model_config, local_file_path, user, task_id
+            )
+            passages = results["text"]
+            segments = results["segments"]
 
-            # 2. sentiment
+            save_file_text(passages, str(user_temp_dir / "passages.txt"))
+            s3_handler.upload_file_to_s3(str(user_temp_dir / "passages.txt"), s3_path_task)
+
+            save_file_text(title, str(user_temp_dir / "title.txt"))
+            s3_handler.upload_file_to_s3(str(user_temp_dir / "title.txt"), s3_path_task)
+
+            save_file_json(segments, str(user_temp_dir / "segments.json"))
+            s3_handler.upload_file_to_s3(str(user_temp_dir / "segments.json"), s3_path_task)
+
             print("SENTIMENT...")
             sentiment, sentences = sentimet_audio(passages)
-            # print(sentiment, sentences)
-            save_file_json(
-                sentiment, f'./temp/{user}/sentiment.json')
-            s3_handler.upload_file_to_s3(
-                f'./temp/{user}/sentiment.json', s3_path_task)
+            save_file_json(sentiment, str(user_temp_dir / "sentiment.json"))
+            s3_handler.upload_file_to_s3(str(user_temp_dir / "sentiment.json"), s3_path_task)
 
-            save_file_json(
-                sentences, f'./temp/{user}/sentences.json')
-            s3_handler.upload_file_to_s3(
-                f'./temp/{user}/sentences.json', s3_path_task)
+            save_file_json(sentences, str(user_temp_dir / "sentences.json"))
+            s3_handler.upload_file_to_s3(str(user_temp_dir / "sentences.json"), s3_path_task)
 
-            # 3. Speaker Identification
             print("DIARIZE...")
-            # trans_with_spk = diarize_speaker(audio_path, segments)
-            trans_with_spk = diarize_speaker_whisperX(audio_path, segments)
-            save_file_json(
-                trans_with_spk, f'./temp/{user}/matching_speaker.json')
-            s3_handler.upload_file_to_s3(
-                f'./temp/{user}/matching_speaker.json', s3_path_task)
-
-            # Delete task
-
-            now = datetime.now()
-            now_ = now.strftime("%b-%d-%Y-%H-%M-%S")
+            trans_with_spk = diarize_speaker_whisperX(
+                audio_path,
+                segments,
+                model_config["transcribe"]["device"],
+                model_config["transcribe"]["hf_token"],
+            )
+            save_file_json(trans_with_spk, str(user_temp_dir / "matching_speaker.json"))
+            s3_handler.upload_file_to_s3(str(user_temp_dir / "matching_speaker.json"), s3_path_task)
 
             json_data["status"] = "1"
+            sqs_handler.send_message(finish_queue, json.dumps(json_data))
 
-            message_body = json.dumps(json_data)    
-            sqs_handler.send_message(FINISH_QUEUE, message_body)
-            
-            temp_files = glob(f'./temp/{user}/*')
-            for f in temp_files:
-                os.remove(f)
-            
-            task_id_user = task_id + '__' + \
-                '-'.join(convert_string_ASCII(user))
-            emailsender.send_email_text(rev_email, task_id_user)
-            print('Sending email with result!')
-        except Exception as e:
-            print('ERROR]____:', e)
-            now = datetime.now()
-            now_ = now.strftime("%b-%d-%Y-%H-%M-%S")
-            status = int(status)
-            status += 1
-            if status > 2:
-                url_queue = ERROR_QUEUE
-            else:
-                url_queue = TASK_QUEUE
-            
-            json_data["time"] = now_
-            json_data["status"] = str(status)
-            message_body = json.dumps(json_data)    
-            sqs_handler.send_message(url_queue, message_body)
+            for path in glob(str(user_temp_dir / "*")):
+                os.remove(path)
+
+            task_id_user = task_id + "__" + "-".join(convert_string_ASCII(user))
+            email_sender.send_email_text(rev_email, task_id_user)
+            print("Sending email with result!")
+
+        except Exception as exc:
+            log_api_error(str(exc))
+            print("ERROR]____:", exc)
+
+            next_status = int(status) + 1
+            json_data["time"] = datetime.now().strftime("%b-%d-%Y-%H-%M-%S")
+            json_data["status"] = str(next_status)
+
+            retry_queue = error_queue if next_status > 2 else task_queue
+            sqs_handler.send_message(retry_queue, json.dumps(json_data))
 
 
 if __name__ == "__main__":

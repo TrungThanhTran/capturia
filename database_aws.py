@@ -1,163 +1,128 @@
-import os
-import boto3
+from __future__ import annotations
+
 import json
+import os
 import time
+from typing import Any
+
+import boto3
 from botocore.exceptions import ClientError
 
-class S3_Handler():
-    def __init__(self, bucket_name) -> None:
-        self.s3_connector = boto3.resource(
-            service_name='s3',
-            region_name='eu-west-2',
-            aws_access_key_id=os.environ['AWS_ACCESS_KEY_ID'],
-            aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY']
-        )
+AWS_REGION = os.environ.get("AWS_REGION", "eu-west-2")
+
+
+class S3_Handler:
+    def __init__(self, bucket_name: str) -> None:
         self.bucket_name = bucket_name
+        self.s3_connector = boto3.resource(
+            service_name="s3",
+            region_name=AWS_REGION,
+            aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
+            aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
+        )
         self.bucket = self.s3_connector.Bucket(bucket_name)
-
         self.s3_client = boto3.client(
-            service_name='s3',
-            region_name='eu-west-2',
-            aws_access_key_id=os.environ['AWS_ACCESS_KEY_ID'],
-            aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY']
+            service_name="s3",
+            region_name=AWS_REGION,
+            aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
+            aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
         )
 
-    def list_username_in_bucket(self):
-        response = self.s3_client.list_objects_v2(
-            Bucket=self.bucket_name, Delimiter='/')
-        folder_namese = []
-        if 'CommonPrefixes' in response:
-            for folder in response['CommonPrefixes']:
-                folder_name = folder['Prefix'].rstrip('/')
-                folder_namese.append(folder_name)
-        return folder_namese
+    def list_username_in_bucket(self) -> list[str]:
+        response = self.s3_client.list_objects_v2(Bucket=self.bucket_name, Delimiter="/")
+        folder_names: list[str] = []
+        for folder in response.get("CommonPrefixes", []):
+            folder_names.append(folder["Prefix"].rstrip("/"))
+        return folder_names
 
-    def download_file_from_s3(self, object_key, local_file_path):
-        '''
-        # Usage example
-        local_file_path = '/path/to/local/file.txt'
-        s3_bucket_name = 'your-s3-bucket'
-        s3_key = 'desired/s3/directory/'  # Include the desired directory structure here
-        '''
-        # Upload the file to S3 preserving the directory structure
-        download_flag = False
+    def download_file_from_s3(self, object_key: str, local_file_path: str) -> bool:
         try:
             self.bucket.download_file(object_key, local_file_path)
-            download_flag = True
-        except Exception as e:
-            print(
-                f"[ERROR]____ downloading file '{object_key}' from S3 bucket: {e}")
-            download_flag = False
-        return download_flag
+            return True
+        except Exception as exc:
+            print(f"[ERROR] downloading file '{object_key}' from S3 bucket: {exc}")
+            return False
 
-    def upload_file_to_s3(self,
-                          file_path,
-                          destination_directory):
-        # Use the 'destination_directory' to construct the object key (file path within the bucket)
-        object_key = destination_directory
-        upload_flag = False
+    def upload_file_to_s3(self, file_path: str, destination_key: str) -> bool:
         try:
-            self.bucket.upload_file(file_path, object_key)
+            self.bucket.upload_file(file_path, destination_key)
             print(
-                f"File '{file_path}' uploaded to S3 bucket '{self.bucket_name}' in directory '{destination_directory}'")
-            upload_flag = True
-        except Exception as e:
-            print(
-                f"[ERROR]____:Error uploading file '{file_path}' to S3 bucket '{self.bucket_name}': {e}")
-            upload_flag = False
-        return upload_flag
+                f"File '{file_path}' uploaded to bucket '{self.bucket_name}' with key '{destination_key}'"
+            )
+            return True
+        except Exception as exc:
+            print(f"[ERROR] uploading file '{file_path}' to S3 bucket '{self.bucket_name}': {exc}")
+            return False
 
-    def create_s3_folder(self,
-                         folder_name):
-        # If the folder name doesn't end with '/', add it for consistency
-        if not folder_name.endswith('/'):
-            folder_name += '/'
-
-        # Create an empty object (0 bytes) with the specified key (folder name)
-        response = self.bucket.put_object(Key=folder_name)
-        return response
+    def create_s3_folder(self, folder_name: str) -> dict[str, Any]:
+        normalized = folder_name if folder_name.endswith("/") else f"{folder_name}/"
+        return self.bucket.put_object(Key=normalized)
 
 
-class SQS_Handler():
+class SQS_Handler:
     def __init__(self) -> None:
         self.sqs_client = boto3.client(
-            service_name='sqs',
-            region_name='eu-west-2',
-            aws_access_key_id=os.environ['AWS_ACCESS_KEY_ID'],
-            aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY']
+            service_name="sqs",
+            region_name=AWS_REGION,
+            aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
+            aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
         )
 
-    def create_queue(self, queue_name, delay_seconds, visiblity_timeout):
-        """
-        Create a standard SQS queue
-        """
+    def create_queue(self, queue_name: str, delay_seconds: str, visibility_timeout: str):
         try:
-            response = self.sqs_client.create_queue(QueueName=queue_name,
-                                                    Attributes={
-                                                        'DelaySeconds': delay_seconds,
-                                                        'VisibilityTimeout': visiblity_timeout
-                                                    })
+            return self.sqs_client.create_queue(
+                QueueName=queue_name,
+                Attributes={
+                    "DelaySeconds": delay_seconds,
+                    "VisibilityTimeout": visibility_timeout,
+                },
+            )
         except ClientError:
-            print(f'Could not create SQS queue - {queue_name}.')
+            print(f"Could not create SQS queue - {queue_name}.")
             raise
-        else:
-            return response
 
-    def list_queues(self):
-        """
-        Creates an iterable of all Queue resources in the collection.
-        """
+    def list_queues(self) -> list[str]:
         try:
-            sqs_queues = []
-            for queue in self.sqs_client.queues.all():
-                sqs_queues.append(queue)
+            response = self.sqs_client.list_queues()
+            return response.get("QueueUrls", [])
         except ClientError:
-            print('[ERROR]____: Could not list queues.')
+            print("[ERROR]: Could not list queues.")
             raise
-        else:
-            return sqs_queues
 
-    def get_message(self, queue_url):
-        # Create an SQS client
-        # Receive message from SQS queue
+    def get_message(self, queue_url: str):
         response = self.sqs_client.receive_message(
             QueueUrl=queue_url,
-            AttributeNames=[
-                'SentTimestamp'
-            ],
+            AttributeNames=["SentTimestamp"],
             MaxNumberOfMessages=1,
-            MessageAttributeNames=[
-                'All'
-            ],
+            MessageAttributeNames=["All"],
             VisibilityTimeout=0,
-            WaitTimeSeconds=0
+            WaitTimeSeconds=0,
         )
-        if  'Messages' not in response:
-            time.sleep(5)  # Add some delay before checking again
+
+        messages = response.get("Messages")
+        if not messages:
+            time.sleep(5)
             return None, None, None, None, None, None
-        else:
-            message = response['Messages'][0]
-            receipt_handle = message['ReceiptHandle']
 
-            # Delete received message from queue
-            self.sqs_client.delete_message(
-                QueueUrl=queue_url,
-                ReceiptHandle=receipt_handle
-            )
-            print('Received and deleted message: %s' % json.loads(message['Body']))
-            message_task = json.loads(message['Body'])
-            return message_task['task_id'], message_task['file_path'], message_task['user'], message_task['email'], message_task['time'], message_task['status']
+        message = messages[0]
+        self.sqs_client.delete_message(QueueUrl=queue_url, ReceiptHandle=message["ReceiptHandle"])
 
-    def send_message(self, queue_url, message_body):
-        # Create an SQS client
+        message_task = json.loads(message["Body"])
+        print(f"Received and deleted message: {message_task}")
+        return (
+            message_task.get("task_id"),
+            message_task.get("file_path"),
+            message_task.get("user"),
+            message_task.get("email"),
+            message_task.get("time"),
+            message_task.get("status"),
+        )
+
+    def send_message(self, queue_url: str, message_body: str) -> bool:
         try:
-            # Send the message to the SQS queue
-            response = self.sqs_client.send_message(
-                QueueUrl=queue_url,
-                MessageBody=message_body
-            )
-
-            print(
-                f"Message sent successfully with MessageId: {response['MessageId']}")
-        except Exception as e:
-            print(f"[ERROR]____: {str(e)}")
+            response = self.sqs_client.send_message(QueueUrl=queue_url, MessageBody=message_body)
+            print(f"Message sent successfully with MessageId: {response['MessageId']}")
+            return True
+        except Exception as exc:
+            print(f"[ERROR]: {exc}")
+            return False
